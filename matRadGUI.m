@@ -6797,6 +6797,7 @@ function pushbutton50_Callback(hObject, eventdata, handles)
 % handles    structure with handles and user data (see GUIDATA)
 %% Show Beam Scores
 try
+    %self-made beam scoring function 
     BeamScore=evalin('base','RCD');
     BeamScore(6, 1) = size(BeamScore, 2);
 
@@ -6806,10 +6807,74 @@ try
     t1.RowName = {'Beam Number','Tumor Score','Organ Score','Total Score','Beampool Average', '# of Beams'};
     t1.Position = [0 200 1000 200];
     
-    assignin('base','BeamScore',BeamScore);
+    assignin('base','BeamScore1',BeamScore);
+    
+    %beam scoring function from paper
+    BeamScore2=evalin('base','beamscores');
+    BeamScore2(6, 1) = size(BeamScore2, 2);
+
+    f2 = figure;
+    t2 = uitable(f2);
+    t2.Data = BeamScore2;
+    t2.RowName = {'Beam Number','Tumor Score','Organ Score','Total Score','Beampool Total', '# of Beams'};
+    t2.Position = [0 200 1000 200];
+    
+    assignin('base','BeamScore2',BeamScore2);
     
 catch
-    error('Error: Something went wrong!');
+    error('Error: Please make sure beams have been scored.');
+end
+
+% --- Executes on button press in pushbutton51.
+function pushbutton51_Callback(hObject, eventdata, handles)
+% hObject    handle to pushbutton51 (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+%% Calculate Beam Scores
+try
+    picked=evalin('base', 'RCD');
+    C = evalin('base', 'C');
+    D = evalin('base', 'D');
+    t = evalin('base', 't');
+    
+    %calculate score of beam
+    index = size(picked, 2);
+    for beam = 1:index
+        beam_number = picked(1, beam);
+        t_score = 0;
+        o_score = 0;
+        %calculate tumor score
+        for i=1:size(C.tgcst, 2)
+            t_dose = t*(D.TARGETdose{i,beam_number});
+            p = C.tgcst{i}.dose;
+            if i == 1
+                t_score = sum((t_dose-p).^2); 
+            else
+                t_score = t_score + sum((t_dose-p).^2);
+            end
+        end
+        %calculate organ score
+        for i=1:size(C.oarcst,2)
+            o_dosage = t*(D.OARdose{i, beam_number});
+            if i == 1
+                o_score = sum((o_dosage - C.oarcst{i}.dose).^2);
+            else
+                o_score = o_score + sum((o_dosage - C.oarcst{i}.dose).^2);
+            end
+        end
+    picked(2, beam) = t_score;
+    picked(3, beam) = o_score;
+    end
+        
+    %finalize beam scores
+    for i = 1:size(picked,2)
+        picked(4,i) = (picked(3,i)+picked(2,i));
+    end
+    picked(5,1) = sum(picked(4,:));
+    assignin('base','beamscores',picked);
+    
+catch
+    error('Error: Make sure beam angles have been calculated.');
 end
 
 
@@ -6818,5 +6883,3 @@ function figure1_ButtonDownFcn(hObject, eventdata, handles)
 % hObject    handle to figure1 (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
-
-
