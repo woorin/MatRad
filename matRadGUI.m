@@ -6799,6 +6799,7 @@ function pushbutton50_Callback(hObject, eventdata, handles)
 try
     %self-made beam scoring function 
     BeamScore=evalin('base','RCD');
+    BeamScore(5, 2) = sum(BeamScore(4,:));
     BeamScore(6, 1) = size(BeamScore, 2);
 
     f = figure;
