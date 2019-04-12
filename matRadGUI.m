@@ -5160,27 +5160,9 @@ try
         %update index of picked beam
             index = size(RCD, 2) + 1;
             RCD(1, index) = D.pick(1);
-        D.penalty=(D.penalty)';
-        
-        %calculate score of beam
-        beam_number = RCD(1, index);
-        t_score = 0;
-        o_score = 0;
-        
-        for i=1:size(C.tgcst, 2)
-            t_dosage = t*(D.TARGETdose{i,beam_number});
-            t_score = t_score + sum(t_dosage.*(1/C.tgcst{i}.dose));
-        end
             
-        for i=1:size(C.oarcst,2)
-            o_dosage = t*(D.OARdose{i, beam_number});
-            o_score = o_score + sum(o_dosage.*(1/C.oarcst{i}.dose));
-        end
-        
-        RCD(2, index) = t_score;
-        RCD(3, index) = o_score;
-        
-        
+        D.penalty=(D.penalty)';
+
         kkkkk=0;
         for kkkk=1:size(C.tg,2)
             kkkkk=kkkkk+sum(D.DOT{kkkk});
@@ -5196,14 +5178,7 @@ try
         end
         waitbar(gather((kkkkk)/ddd));
     y=y+t;
-    %fprintf('other time %f\n',toc);
     end
-    
-     %finalize beam scores
-    for i = 1:size(RCD,2)
-        RCD(4,i) = (RCD(3,i)/RCD(2,i));
-    end
-    RCD(5,1) = mean(RCD(4,:));
     
     for i=1:size(D.DOOI,2)
         D.DOOI{2,i}=C.oarcst{i}.dose;
@@ -5226,6 +5201,11 @@ try
     assignin('base','pln',pln);
     D=rmfield(D,'OARdose');
     D=rmfield(D,'TARGETdose');
+    %changing DOOI format
+    for i = 1:size(C.oarcst, 2)
+        D.DOOI{1,i} = C.oarcst{i}.dose - D.DOOI{1,i};
+    end
+     
     assignin('base','D2',D);
     temp1=D.DOOI;
     temp2=D.DOT;
@@ -5479,6 +5459,12 @@ try
     assignin('base','pln',pln);
     D=rmfield(D,'OARdose');
     D=rmfield(D,'TARGETdose');
+    
+    %changing DOOI format
+    for i = 1:size(C.oarcst, 2)
+        D.DOOIfull{1,i} = C.oarcst{i}.dose - D.DOOIfull{1,i};
+    end
+    
     assignin('base','D2',D);
     assignin('base','RCD',RCD);
     temp1=D.DOOIfull;
@@ -5624,7 +5610,6 @@ try
         end
         waitbar(gather((kkkkk)/ddd));
     y=y+t;
-    fprintf('other time %f\n',toc);
     end
     for i=1:size(D.DOOI,2)
         D.DOOIfull{2,i}=C.oarcst{i}.dose;
@@ -5647,6 +5632,12 @@ try
     assignin('base','pln',pln);
     D=rmfield(D,'OARdose');
     D=rmfield(D,'TARGETdose');
+    
+    %changing DOOI format
+    for i = 1:size(C.oarcst, 2)
+        D.DOOIfull{1,i} = C.oarcst{i}.dose - D.DOOIfull{1,i};
+    end
+    
     assignin('base','D2',D);
     temp1=D.DOOIfull;
     temp2=D.DOTfull;
@@ -5750,11 +5741,6 @@ try
     D.penalty(3,:)=zeros(1,temp.numOfBeams);
     D.penalty(4,:)=zeros(1,temp.numOfBeams);
     RCD=[];
-    %RCD{1, 1} = 'Beam Number';
-%     RCD(2, 1) = 'Tumor Score';
-%     RCD(3, 1) = 'Organ Score';
-%     RCD(4, 1) = 'Total Score';
-%     RCD(5, 1) = 'Beampool Average';
     ddd=0;
     
     %creates DOT (dose information for each target voxel)
@@ -5851,27 +5837,6 @@ try
         RCD(1, index) = D.pick(1);
         D.penalty=(D.penalty)';
         
-        
-        %calculate score of beam
-        beam_number = RCD(1, index);
-        t_score = 0;
-        o_score = 0;
-        
-        for i=1:size(C.tgcst, 2)
-            t_dosage = t*(D.TARGETdose{i,beam_number});
-            t_score = t_score + sum(t_dosage.*(1/C.tgcst{i}.dose));
-        end
-            
-        for i=1:size(C.oarcst,2)
-            o_dosage = t*(D.OARdose{i, beam_number});
-            o_score = o_score + sum(o_dosage.*(1/C.oarcst{i}.dose));
-        end
-        
-        RCD(2, index) = t_score;
-        RCD(3, index) = o_score;
-        
-        
-        
         %update waitbar
         kkkkk=0;
         for kkkk=1:size(C.tg,2)
@@ -5889,12 +5854,6 @@ try
         waitbar(gather((kkkkk)/ddd));
     y=y+t;
     end
-    
-    %finalize beam scores
-    for i = 1:size(RCD,2)
-        RCD(4,i) = (RCD(3,i)/RCD(2,i));
-    end
-    RCD(5,1) = mean(RCD(4,:));
     
     %calculate and report information for organ dosages
     for i=1:size(D.DOOI,2) 
@@ -6123,26 +6082,6 @@ try
              
         D.penalty=(D.penalty)';
         
-        %calculate score of beam
-        index = size(RCD, 2);
-        beam_number = RCD(1, index);
-        t_score = 0;
-        o_score = 0;
-
-        for i=1:size(C.tgcst, 2)
-            t_dosage = t*(D.TARGETdose{i,beam_number});
-            t_score = t_score + sum(t_dosage.*(1/C.tgcst{i}.dose));
-        end
-
-        for i=1:size(C.oarcst,2)
-            o_dosage = t*(D.OARdose{i, beam_number});
-            o_score = o_score + sum(o_dosage.*(1/C.oarcst{i}.dose));
-        end
-
-        RCD(2, index) = t_score;
-        RCD(3, index) = o_score;
-        
-        
         %update waitbar
         kkkkk=0;
         for kkkk=1:size(C.tg,2)
@@ -6160,12 +6099,6 @@ try
         waitbar(gather((kkkkk)/ddd));
     y=y+t;
     end
-    
-    %finalize beam scores
-    for i = 1:size(RCD,2)
-        RCD(4,i) = (RCD(3,i)/RCD(2,i));
-    end
-    RCD(5,1) = mean(RCD(4,:));
     
     %calculate and report information for organ dosages
     for i=1:size(D.DOOI,2) 
@@ -6363,27 +6296,7 @@ try
             nouse(D.pick(1)) = 1; %beam cannot be used
         end
              
-        D.penalty=(D.penalty)';
-        
-        %calculate score of beam
-        index = size(RCD, 2);
-        beam_number = RCD(1, index);
-        t_score = 0;
-        o_score = 0;
-
-        for i=1:size(C.tgcst, 2)
-            t_dosage = t*(D.TARGETdose{i,beam_number});
-            t_score = t_score + sum(t_dosage.*(1/C.tgcst{i}.dose));
-        end
-
-        for i=1:size(C.oarcst,2)
-            o_dosage = t*(D.OARdose{i, beam_number});
-            o_score = o_score + sum(o_dosage.*(1/C.oarcst{i}.dose));
-        end
-
-        RCD(2, index) = t_score;
-        RCD(3, index) = o_score;
-        
+        D.penalty=(D.penalty)'; 
         
         %update waitbar
         kkkkk=0;
@@ -6402,12 +6315,6 @@ try
         waitbar(gather((kkkkk)/ddd));
     y=y+t;
     end
-    
-    %finalize beam scores
-    for i = 1:size(RCD,2)
-        RCD(4,i) = (RCD(3,i)/RCD(2,i));
-    end
-    RCD(5,1) = mean(RCD(4,:));
     
     %fprintf('here2')
     %calculate and report information for organ dosages
@@ -6785,8 +6692,21 @@ function pushbutton49_Callback(hObject, eventdata, handles)
 % hObject    handle to pushbutton49 (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
-%% save button
-evalin('base','save 3_108.mat');
+%% Save Button
+try
+    prompt = {'Enter file name (duplicates will be replaced):'};
+    dlg_title = 'Input';
+    num_lines = 1;
+    defaultans = {'New_File'};
+    answer = inputdlg(prompt,dlg_title,num_lines,defaultans);
+    answer = strcat("save ", answer{1});
+    disp(answer)
+    
+    evalin('base', answer);
+
+catch
+    error('Error: Please make sure file name is valid with no spaces.');   
+end
 
 
 
@@ -6797,30 +6717,25 @@ function pushbutton50_Callback(hObject, eventdata, handles)
 % handles    structure with handles and user data (see GUIDATA)
 %% Show Beam Scores
 try
-    %self-made beam scoring function 
-    BeamScore=evalin('base','RCD');
-    BeamScore(5, 2) = sum(BeamScore(4,:));
-    BeamScore(6, 1) = size(BeamScore, 2);
-
-    f = figure;
-    t1 = uitable(f);
-    t1.Data = BeamScore;
-    t1.RowName = {'Beam Number','Tumor Score','Organ Score','Total Score','Beampool Average', '# of Beams'};
+    %table of selected beams
+    beams = evalin('base', 'RCD');
+    f1 = figure;
+    t1 = uitable(f1);
+    t1.Data = beams;
+    t1.RowName = {'Selected Beams'};
     t1.Position = [0 200 1000 200];
     
-    assignin('base','BeamScore1',BeamScore);
-    
     %beam scoring function from paper
-    BeamScore2=evalin('base','beamscores');
-    BeamScore2(6, 1) = size(BeamScore2, 2);
+    BeamScore=evalin('base','beamscores');
+    BeamScore{4, 1} = size(beams, 2);
 
     f2 = figure;
     t2 = uitable(f2);
-    t2.Data = BeamScore2;
-    t2.RowName = {'Beam Number','Tumor Score','Organ Score','Total Score','Beampool Total', '# of Beams'};
+    t2.Data = BeamScore;
+    t2.RowName = {'Tumor Score','Organ Score','Total Score','# of Beams', '# Overdose'};
     t2.Position = [0 200 1000 200];
     
-    assignin('base','BeamScore2',BeamScore2);
+    assignin('base','BeamScore',BeamScore);
     
 catch
     error('Error: Please make sure beams have been scored.');
@@ -6833,47 +6748,69 @@ function pushbutton51_Callback(hObject, eventdata, handles)
 % handles    structure with handles and user data (see GUIDATA)
 %% Calculate Beam Scores
 try
-    picked=evalin('base', 'RCD');
+    scores={};
     C = evalin('base', 'C');
-    D = evalin('base', 'D');
-    t = evalin('base', 't');
+    D2 = evalin('base', 'D2');
     
-    %calculate score of beam
-    index = size(picked, 2);
-    for beam = 1:index
-        beam_number = picked(1, beam);
-        t_score = 0;
-        o_score = 0;
-        %calculate tumor score
-        for i=1:size(C.tgcst, 2)
-            t_dose = t*(D.TARGETdose{i,beam_number});
-            p = C.tgcst{i}.dose;
-            if i == 1
-                t_score = sum((t_dose-p).^2); 
-            else
-                t_score = t_score + sum((t_dose-p).^2);
-            end
+    %calculate tumor score
+    t_score = 0;
+    for i = 1: size(C.tgcst, 2)
+        p = C.tgcst{i}.dose;
+        if isfield(D2, 'DOTfull')
+            condition = D2.DOTfull{1,i} < p;
+            underdose = nonzeros(condition.*D2.DOTfull{1,i});
+            t_score = t_score + sum(abs(underdose-p).*2);  
+        else
+            condition = D2.DOT{1,i} < p;
+            underdose = nonzeros(condition.*D2.DOT{1,i});
+            t_score = t_score + sum(abs(underdose-p).*2);  
         end
-        %calculate organ score
-        for i=1:size(C.oarcst,2)
-            o_dosage = t*(D.OARdose{i, beam_number});
-            if i == 1
-                o_score = sum((o_dosage - C.oarcst{i}.dose).^2);
-            else
-                o_score = o_score + sum((o_dosage - C.oarcst{i}.dose).^2);
-            end
-        end
-    picked(2, beam) = t_score;
-    picked(3, beam) = o_score;
     end
-        
+    
+    %calculate organ score
+    o_score = 0;
+    for i = 1: size(C.oarcst, 2)
+        p = C.oarcst{i}.dose;
+        if isfield(D2, 'DOOIfull')
+            condition = D2.DOOIfull{1,i} > p;
+            overdose = nonzeros(condition.*D2.DOOIfull{1,i});
+            o_score = o_score + sum(abs(overdose-p).*2);
+        else
+            condition = D2.DOOI{1,i} > p;
+            overdose = nonzeros(condition.*D2.DOOI{1,i});
+            o_score = o_score + sum(abs(overdose-p).*2);
+        end
+    end
+    
+    %calculate normalization score
+    rec = 0;
+    if (t_score == 0) || (o_score == 0)
+        rec = 0;
+    elseif t_score < o_score
+        rec = 10^(floor(log10(o_score/t_score)));
+    else
+        rec = 10^(floor(log10(t_score/o_score)));
+    end
+    
+    prompt = {'Enter normalization factor (recommended is given):'};
+    dlg_title = 'Input';
+    num_lines = 1;
+    defaultans = {num2str(rec)};
+    answer = inputdlg(prompt,dlg_title,num_lines,defaultans);
+    factor = str2double(answer{1});
+   
     %finalize beam scores
-    for i = 1:size(picked,2)
-        picked(4,i) = (picked(3,i)+picked(2,i));
+    scores{1, 1} = t_score;
+    scores{2, 1} = o_score;
+    if t_score < o_score
+        scores{1, 2} = factor*t_score;
+        scores {3, 1} = (factor*t_score) + o_score;
+    else
+        scores{2, 2} = factor*o_score;
+        scores{3, 1} = t_score + (factor*o_score);
     end
-    picked(5,1) = sum(picked(4,:));
-    assignin('base','beamscores',picked);
-    
+    assignin('base','beamscores',scores);
+   
 catch
     error('Error: Make sure beam angles have been calculated.');
 end
