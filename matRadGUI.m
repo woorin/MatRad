@@ -6802,7 +6802,7 @@ try
     %finalize beam scores
     scores{1, 1} = t_score;
     scores{2, 1} = o_score;
-    if t_score < o_score
+    if (t_score < o_score) || (o_score == 0)
         scores{1, 2} = factor*t_score;
         scores {3, 1} = (factor*t_score) + o_score;
     else
