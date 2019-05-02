@@ -6367,326 +6367,6 @@ catch
     error('Error: Please make sure all variables have been entered.');
 end
 
-% --- Executes on button press in pushbutton48.
-function pushbutton48_Callback(hObject, eventdata, handles)
-% hObject    handle to pushbutton48 (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
-%% full-scale search (greedy)
-y=0;
-%tempdose=sparse(prod(B.dim),1);
-fprintf('New Whole Organ Function: ')
-try
-    tic %start timing
-    
-    %User input for maximum dose of each beam
-    set(handles.pushbutton48,'Enable','off');
-    prompt = {'Enter maximum dose of each beam:'};
-    dlg_title = 'Input';
-    num_lines = 1;
-    defaultans = {'5'};
-    answer = inputdlg(prompt,dlg_title,num_lines,defaultans);
-    waitb = waitbar(0,'Please wait...');
-    
-    %Getting previous variables from base
-    %ct=evalin('base','ct');
-    pln=evalin('base','pln2');
-    cst=evalin('base','cst');
-    B=evalin('base','B');
-    C=evalin('base','C');
-    D=evalin('base','D');
-    %answer=evalin('base','answer');
-    t=str2double(answer{1}); %maxdose
-    assignin('base','t',t);
-    temp.numOfBeams=pln.propStf.numOfBeams;
-    temp.isoCenter=pln.propStf.isoCenter;
-    temp.gantryAngles=pln.propStf.gantryAngles;
-    temp.couchAngles=pln.propStf.couchAngles;
-    pln.propStf.numOfBeams=0;%t*size(C.tg,2);
-    pln.propStf.isoCenter=[];
-    pln.propStf.gantryAngles=[];
-    pln.propStf.couchAngles=[];
-    
-    %Algorithm begins
-    %Score of tumor voxel j, beam i:
-    % = dose[i][j]/dt[j]*min(1-(recieved[j]/dt[j]), 0)
-    %Score of organ voxel k, do is upper bound:
-    %if recieved[k] < do[k]: dose[i][k]/do[k]
-    %if >=: dose[i][k]/do[k] * (received[k]/do[k])^2
-    %Total score[i] = sum of score[j] - sum of score[k]
-    
-    D.penalty(1,:)=zeros(1,temp.numOfBeams);
-    bused=zeros(1,temp.numOfBeams); %zeroes, num of beams
-    D.penalty(2,:)=1:temp.numOfBeams;
-    D.penalty(3,:)=zeros(1,temp.numOfBeams);
-    D.penalty(4,:)=zeros(1,temp.numOfBeams);
-    RCD=[];
-    ddd=0;
-    %copied from whole organ function
-    for kk=1:temp.numOfBeams
-        for i=1:size(C.tg,2)
-            D.TARGETdosesum(i,kk)=sum(D.TARGETdose{i,kk});
-        end
-    end
-    for kk=1:temp.numOfBeams
-        for i=1:size(C.oar,2)
-            D.OARdosesum(i,kk)=sum(D.OARdose{i,kk});
-        end
-    end
-%     clear temp1;
-%     clear temp2;
-%     clear temp3;
-%     for kk=1:size(C.tg,2)
-%         D.DOT(kk)=0;
-%         D.DOTI(kk)=C.tgcst{kk}.dose*size(C.tg{kk},1);
-%         ddd=ddd+size(C.tg{kk},1)*C.tgcst{kk}.dose;
-%         D.DOTfull{kk}=zeros(size(C.tg{kk}));
-%         D.DOTIfull{kk}=C.tgcst{kk}.dose.*ones(size(C.tg{kk}));
-%     end
-%     for kk=1:size(C.oar,2)
-%         D.DOOI(kk)=C.oarcst{kk}.dose*size(C.oar{kk},1);
-%         D.DOOIfull{kk}=C.oarcst{kk}.dose.*ones(size(C.oar{kk}));
-%     end
-    
-    %creates DOT (dose information for each target voxel)
-    %creates DOTI (unfulfilled dose for each target voxel)
-    
-    for kk=1:size(C.tg,2) %voxel index of each target, returns number of targets
-        D.DOT(kk)=0;
-        D.DOTI(kk)=C.tgcst{kk}.dose*size(C.tg{kk},1);
-        ddd=ddd+size(C.tg{kk},1)*C.tgcst{kk}.dose; %ddd = sum of (numvoxels*needed dose)
-        D.DOTfull{kk}=zeros(size(C.tg{kk})); %creates DOT filled with 0's (dose information of each voxel)
-        D.DOTIfull{kk}=C.tgcst{kk}.dose.*ones(size(C.tg{kk})); %unfulfilled dose, initialized with needed doses
-    end
-    %creates DOOI (dose information for each OAR voxel)
-    for kk=1:size(C.oar,2)
-        %D.DOOI{kk}=C.oarcst{kk}.dose.*ones(size(C.oar{kk})); %initialized with each voxel having max dose
-        D.DOOI(kk)=0; %initialized with all 0 dose
-        D.DOOIfull{kk}=zeros(size(C.oar{kk}));
-    end
-    %D.TARGETdose is a double matrix. Beam number on x and target on y
-    %In cell is the dose recieved of each voxel on target
-    DOTRCD=ones(1,size(C.tg,2)); %initialized with all ones, dim = num of targets
-    %Basically for number of beams
-    for kk=1:(size(B.bs{1},2)*size(C.tg,2)+size(C.tg,2)*(size(C.tg,2)-1))%=1:size(C.tg,2)
-        D.penalty(3,:)=zeros(1,temp.numOfBeams);%3rd row, initialized to 0 - score at targets
-        D.penalty(4,:)=zeros(1,temp.numOfBeams); %score at organs
-        %calculate score for each tumor
-        for i=1:size(C.tgcst,2) %iterate through each target
-            td=t*(D.TARGETdosesum(i,:)); %maxdose * dose at target
-            %weight = (1 - (D.DOT(i)*(1/C.tgcst{i}.dose))).*(D.DOT(i)<C.tgcst{i}.dose);
-            weight = (1 - (D.DOT(i)*(1/C.tgcst{i}.dose))).*(D.DOT(i)<td);
-            assignin('base','weight',weight);
-            %calculating penalty of beam from targets
-            %D.penalty(3,:) = D.penalty(3,:) + sum((td.*(1/C.tgcst{i}.dose)).*weight);
-            D.penalty(3,:) = D.penalty(3,:) + sum((td.*(1/C.tgcst{i}.dose)).*weight);
-        end
-        %calculate score for each organ
-        for i=1:size(C.oarcst,2) %go through each organ
-             td=t*(D.OARdosesum(i,:));
-%              tcp1 = (D.DOOI(i) < C.oarcst{i}.dose);
-%              tcp2 = (D.DOOI(i) >= C.oarcst{i}.dose);
-%              weightoar = ((D.DOOI(i).*(1/C.oarcst{i}.dose)).^2).*tcp2;
-%              D.penalty(4,:) = D.penalty(4,:) + sum(((td.*(1/C.oarcst{i}.dose)).*tcp1) + ((td.*(1/C.oarcst{i}.dose)).*weightoar));
-             tcp1 = (D.DOOI(i) < td);
-             tcp2 = (D.DOOI(i) >= td);
-             weightoar = ((D.DOOI(i).*(1/C.tgcst{i}.dose)).^2).*tcp2;
-             D.penalty(4,:) = D.penalty(4,:) + sum(((td.*(1/C.tgcst{i}.dose)).*tcp1) + ((td.*(1/C.tgcst{i}.dose)).*weightoar));
-        end
-        %copied from old whole organ function
-%         for i=1:size(C.tgcst,2)
-%             td=t*(D.TARGETdosesum(i,:));
-%             D.penalty(3,:)=D.penalty(3,:)+(td.^2.*(D.DOTI(i)>td)+D.DOTI(i).^2.*(D.DOTI(i)<=td)).*C.tgcst{i}.penalty;
-%         end
-%         for i=1:size(C.oarcst,2) 
-%             td=t*D.OARdosesum(i,:);
-%             tcp1=D.DOOI(i)>=td;
-%             tcp2=D.DOOI(i)<td;
-%             D.penalty(4,:)=D.penalty(4,:)+((td.*tcp1+td.*tcp2+((td-D.DOOI(i)).*tcp2).^2)).*C.oarcst{i}.penalty;
-%         end
-        
-        %calculate total score of each beam
-        D.penalty(1,:)=(D.penalty(4,:))./D.penalty(3,:);
-        %D.penalty(1,:)=D.penalty(4,:);
-        %D.penalty(1,:) = D.penalty(4,:) - D.penalty(3,:);
-        assignin('base','penalty',D.penalty);
-        for i=1:size(bused,2)
-            if bused(i)==1 %all 0s at first, if beam# is already used, don't pick it again
-                D.penalty(1,i)=inf;
-            end
-        end
-        fprintf('here8')
-        D.penalty=(D.penalty)';
-        D.penaltytemp=sortrows(D.penalty,1); %sort by smallest penalty 
-        assignin('base','penaltytemp',D.penaltytemp);
-        D.pick=D.penaltytemp(1,2)';
-        fprintf('here9')
-        %pick beam and update to bused so we know it was used
-        pln.propStf.isoCenter(kk,:)=temp.isoCenter(D.pick(1),:);
-        pln.propStf.gantryAngles=[pln.propStf.gantryAngles,temp.gantryAngles(D.pick(1))];
-        pln.propStf.couchAngles=[pln.propStf.couchAngles,temp.couchAngles(D.pick(1))];
-        pln.propStf.numOfBeams=pln.propStf.numOfBeams+1;
-        bused(D.pick(1))=1;
-        fprintf('here10')
-        %update unfulfilled dose, recieved dose for targets and organs
-        for i=1:size(C.tg,2) %for every target
-            D.DOTI(i)=(D.DOTI(i)-t*D.TARGETdosesum(i,D.pick(1))).*(D.DOTI(i)>t*D.TARGETdosesum(i,D.pick(1)));
-            D.DOT(i)=D.DOT(i)+t*D.TARGETdosesum(i,D.pick(1));
-            D.DOTIfull{i}=(D.DOTIfull{i}-t*D.TARGETdose{i,D.pick(1)}).*(full(D.DOTIfull{i})>t*full(D.TARGETdose{i,D.pick(1)}));
-            D.DOTfull{i}=D.DOTfull{i}+t*D.TARGETdose{i,D.pick(1)};
-        end
-        fprintf('here11')
-        for i=1:size(C.oar,2) %for every organ
-            %D.DOOI{i}=(D.DOOI{i}-t*D.OARdose{i,D.pick(1)});
-            D.DOOI(i)=(D.DOOI(i)+t*D.OARdosesum(i,D.pick(1)));
-            D.DOOIfull{i}=(D.DOOIfull{i}+t*D.OARdose{i,D.pick(1)});
-        end
-        fprintf('here12')
-        %copied from old whole organ function
-%         for i=1:size(C.tg,2)
-%             D.DOTI(i)=(D.DOTI(i)-t*D.TARGETdosesum(i,D.pick(1)))*(D.DOTI(i)>t*D.TARGETdosesum(i,D.pick(1)));
-%             D.DOT(i)=D.DOT(i)+t*D.TARGETdosesum(i,D.pick(1));
-%             D.DOTIfull{i}=(D.DOTIfull{i}-t*D.TARGETdose{i,D.pick(1)}).*(full(D.DOTIfull{i})>t*full(D.TARGETdose{i,D.pick(1)}));
-%             D.DOTfull{i}=D.DOTfull{i}+t*D.TARGETdose{i,D.pick(1)};
-%         end
-%         for i=1:size(C.oar,2)
-%             D.DOOI(i)=D.DOOI(i)-t*D.OARdosesum(i,D.pick(1));
-%             D.DOOIfull{i}=(D.DOOIfull{i}-t*D.OARdose{i,D.pick(1)});
-%         end
-        
-        %update index of picked beam
-        RCD=[RCD,D.pick(1)];
-        D.penalty=(D.penalty)';
-        fprintf('here13')
-        %update waitbar
-        kkkkk=0;
-        for kkkk=1:size(C.tg,2)
-            kkkkk=kkkkk+sum(D.DOT(kkkk));
-        end
-        if kkkkk>=ddd
-            waitbar(1);
-        end
-        flg=0;
-        for i=1:size(D.DOTI,2)
-            if ~(D.DOTI(i)==0)
-                flg=1;
-                break;
-            end
-        end
-        if flg==0
-            break;
-        end
-        waitbar(gather((kkkkk)/ddd));
-        y=y+t;
-    end
-    fprintf('here14')
-    %fprintf('here2')
-    %calculate and report information for organ dosages
-    for i=1:size(D.DOOI,2) 
-        D.DOOIfull{2,i}=C.oarcst{i}.dose; %maximum dose
-        D.DOOIfull{3,i}=mean(D.DOOIfull{1,i}); %mean dose for each voxel
-        D.DOOIfull{4,i}=max(D.DOOIfull{1,i}); %max dose from all voxel
-        if sum(D.DOOIfull{1,i}>C.oarcst{i}.dose)~=0
-            D.DOOIfull{5,i}=(sum((D.DOOIfull{1,i} > C.oarcst{i}.dose).*(D.DOOIfull{1,i}))-(25*sum(full(D.DOOIfull{1,i})>C.oarcst{i}.dose)))/sum(full(D.DOOIfull{1,i})>C.oarcst{i}.dose);
-            D.DOOIfull{6,i}=sum(full(D.DOOIfull{1,i})>C.oarcst{i}.dose)/size(full(D.DOOIfull{1,i}),1);
-            D.DOOIfull{7,i}=sort(D.DOOIfull{1,i}(find(full(D.DOOIfull{1,i})>C.oarcst{i}.dose)));
-        else
-            D.DOOIfull{5,i}=0;
-            D.DOOIfull{6,i}=0;
-            D.DOOIfull{7,i}=[0];
-        end
-    end
-    fprintf('here15')
-    %report information for target dosages
-    for i=1:size(C.tg,2)
-        D.DOTfull{2,i}=sum(D.DOTfull{1,i})/size(D.DOTfull{1,i},1);
-        D.DOTfull{3,i}=C.tgcst{i}.dose;
-    end
-    
-    % for i=1:size(D.DOOI,2)
-%         D.DOOIfull{2,i}=C.oarcst{i}.dose;
-%         D.DOOIfull{3,i}=C.oarcst{i}.dose-mean(D.DOOIfull{1,i});
-%         D.DOOIfull{4,i}=C.oarcst{i}.dose-min(D.DOOIfull{1,i});
-%         if sum(D.DOOIfull{1,i}<0)~=0
-%             D.DOOIfull{5,i}=sum(D.DOOIfull{1,i}(find(full(D.DOOIfull{1,i})<0)))/sum(full(D.DOOIfull{1,i})<0);
-%             D.DOOIfull{6,i}=sum(full(D.DOOIfull{1,i})<0)/size(full(D.DOOIfull{1,i}),1);
-%             D.DOOIfull{7,i}=sort(D.DOOIfull{1,i}(find(full(D.DOOIfull{1,i})<0)));
-%         else
-%             D.DOOIfull{5,i}=0;
-%             D.DOOIfull{6,i}=0;
-%             D.DOOIfull{7,i}=[];
-%         end
-%     end
-%     for i=1:size(C.tg,2)
-%         D.DOTfull{2,i}=sum(D.DOTfull{1,i})/size(D.DOTfull{1,i},1);
-%         D.DOTfull{3,i}=C.tgcst{i}.dose;
-%     end
-    
-    %update data structures into workspace
-    assignin('base','pln',pln);
-    D=rmfield(D,'OARdose');
-    D=rmfield(D,'TARGETdose');
-    assignin('base','D2',D);
-    fprintf('here16')
-    temp1=D.DOOIfull;
-    temp2=D.DOTfull;
-    for i=1:size(D.DOOIfull,2)
-        temp1{1,i}=size(temp1{1,i},1);
-        temp1{7,i}=size(temp1{7,i},1);
-    end
-    for i=1:size(D.DOTfull,2)
-        temp2{1,i}=size(temp2{1,i},1);
-    end
-    fprintf('here17')
-    assignin('base','OARresult',temp1);
-    assignin('base','TARGETresult',temp2);
-    assignin('base','RCD',RCD);
-    assignin('base','hit',bused);
-    set(handles.pushbutton48,'Enable','on');
-    close(waitb);
-toc %end timing
-
-%copied from whole organ function
-% for i=1:size(D.DOOI,2)
-%         D.DOOIfull{2,i}=C.oarcst{i}.dose;
-%         D.DOOIfull{3,i}=C.oarcst{i}.dose-mean(D.DOOIfull{1,i});
-%         D.DOOIfull{4,i}=C.oarcst{i}.dose-min(D.DOOIfull{1,i});
-%         if sum(D.DOOIfull{1,i}<0)~=0
-%             D.DOOIfull{5,i}=sum(D.DOOIfull{1,i}(find(full(D.DOOIfull{1,i})<0)))/sum(full(D.DOOIfull{1,i})<0);
-%             D.DOOIfull{6,i}=sum(full(D.DOOIfull{1,i})<0)/size(full(D.DOOIfull{1,i}),1);
-%             D.DOOIfull{7,i}=sort(D.DOOIfull{1,i}(find(full(D.DOOIfull{1,i})<0)));
-%         else
-%             D.DOOIfull{5,i}=0;
-%             D.DOOIfull{6,i}=0;
-%             D.DOOIfull{7,i}=[];
-%         end
-%     end
-%     for i=1:size(C.tg,2)
-%         D.DOTfull{2,i}=sum(D.DOTfull{1,i})/size(D.DOTfull{1,i},1);
-%         D.DOTfull{3,i}=C.tgcst{i}.dose;
-%     end
-%     assignin('base','pln',pln);
-%     D=rmfield(D,'OARdose');
-%     D=rmfield(D,'TARGETdose');
-%     assignin('base','D2',D);
-%     assignin('base','RCD',RCD);
-%     temp1=D.DOOIfull;
-%     temp2=D.DOTfull;
-%     for i=1:size(D.DOOIfull,2)
-%         temp1{1,i}=size(temp1{1,i},1);
-%         temp1{7,i}=size(temp1{7,i},1);
-%     end
-%     for i=1:size(D.DOTfull,2)
-%         temp2{1,i}=size(temp2{1,i},1);
-%     end
-%     assignin('base','OARresult',temp1);
-%     assignin('base','TARGETresult',temp2);
-catch
-    set(handles.pushbutton48,'Enable','on');
-    close(waitb);
-    error('Error: Please make sure all variables have been entered.');
-end
-
 % --- Executes on button press in pushbutton49.
 function pushbutton49_Callback(hObject, eventdata, handles)
 % hObject    handle to pushbutton49 (see GCBO)
@@ -6814,6 +6494,237 @@ try
 catch
     error('Error: Make sure beam angles have been calculated.');
 end
+
+% --- function to take organ types and find an acceptable beam pool.
+function findBeamPool(sub)
+%% Subtract One Tumor and Compare Results
+try
+    y=0;
+    waitb = waitbar(0,'Plz wait :P ....');
+    pln=evalin('base','pln2');
+    B=evalin('base','B');
+    C=evalin('base','C');
+    D=evalin('base','D');
+    t=5;
+    assignin('base','t',t);
+    temp.numOfBeams=pln.propStf.numOfBeams;
+    temp.isoCenter=pln.propStf.isoCenter;
+    temp.gantryAngles=pln.propStf.gantryAngles;
+    temp.couchAngles=pln.propStf.couchAngles;
+    pln.propStf.numOfBeams=0;%t*size(C.tg,2);
+    pln.propStf.isoCenter=[];
+    pln.propStf.gantryAngles=[];
+    pln.propStf.couchAngles=[];
+    D.penalty(1,:)=zeros(1,temp.numOfBeams);
+    bused=zeros(1,temp.numOfBeams);
+    D.penalty(2,:)=1:temp.numOfBeams;
+    D.penalty(3,:)=zeros(1,temp.numOfBeams);
+    D.penalty(4,:)=zeros(1,temp.numOfBeams);
+    RCD=[];
+    ddd=0;
+    
+    %delete rows/columns on data structures to reflect subtracting tumor
+    if sub ~= 0
+        C.tg(:,sub) = [];
+        C.tgcst(:,sub) = [];
+        D.TARGETdose(sub,:) = [];
+        D.TARGETdosesum(sub,:) = [];
+        D.TARGETnonzero(sub,:) = [];
+        D.TARGETdoseap(sub,:) = [];    
+    end
+    
+    for kk=1:temp.numOfBeams
+        for i=1:size(C.tg,2)
+            D.TARGETdosesum(i,kk)=sum(D.TARGETdose{i,kk});
+        end
+    end
+    for kk=1:temp.numOfBeams
+        for i=1:size(C.oar,2)
+            D.OARdosesum(i,kk)=sum(D.OARdose{i,kk});
+        end
+    end
+    clear temp1;
+    clear temp2;
+    clear temp3;
+    
+    for kk=1:size(C.tg,2)
+        D.DOT(kk)=0;
+        D.DOTI(kk)=C.tgcst{kk}.dose*size(C.tg{kk},1);
+        ddd=ddd+size(C.tg{kk},1)*C.tgcst{kk}.dose;
+        D.DOTfull{kk}=zeros(size(C.tg{kk}));
+        D.DOTIfull{kk}=C.tgcst{kk}.dose.*ones(size(C.tg{kk}));
+    end
+    for kk=1:size(C.oar,2)
+        D.DOOI(kk)=C.oarcst{kk}.dose*size(C.oar{kk},1);
+        D.DOOIfull{kk}=C.oarcst{kk}.dose.*ones(size(C.oar{kk}));
+    end
+    for kk=1:(size(B.bs{1},2)*size(C.tg,2)+size(C.tg,2)*(size(C.tg,2)-1))%=1:size(C.tg,2)
+        D.penalty(3,:)=zeros(1,temp.numOfBeams);
+        D.penalty(4,:)=zeros(1,temp.numOfBeams);
+        for i=1:size(C.tgcst,2)
+            td=t*(D.TARGETdosesum(i,:));
+            D.penalty(3,:)=D.penalty(3,:)+(td.^2.*(D.DOTI(i)>td)+D.DOTI(i).^2.*(D.DOTI(i)<=td)).*C.tgcst{i}.penalty;
+        end
+        for i=1:size(C.oarcst,2) 
+            td=t*D.OARdosesum(i,:);
+            tcp1=D.DOOI(i)>=td;
+            tcp2=D.DOOI(i)<td;
+            D.penalty(4,:)=D.penalty(4,:)+((td.*tcp1+td.*tcp2+((td-D.DOOI(i)).*tcp2).^2)).*C.oarcst{i}.penalty;
+        end
+        
+        D.penalty(1,:)=D.penalty(4,:)./D.penalty(3,:);
+        for i=1:size(bused,2)
+            if bused(i)==1
+                D.penalty(1,i)=inf;
+            end
+        end
+        D.penalty=(D.penalty)';
+        D.penaltytemp=sortrows(D.penalty,1);
+        D.pick=D.penaltytemp(1,2)';
+        pln.propStf.isoCenter(kk,:)=temp.isoCenter(D.pick(1),:);
+        pln.propStf.gantryAngles=[pln.propStf.gantryAngles,temp.gantryAngles(D.pick(1))];
+        pln.propStf.couchAngles=[pln.propStf.couchAngles,temp.couchAngles(D.pick(1))];
+        pln.propStf.numOfBeams=pln.propStf.numOfBeams+1;
+        %
+        bused(D.pick(1))=1;
+        %
+        
+        for i=1:size(C.tg,2)
+            D.DOTI(i)=(D.DOTI(i)-t*D.TARGETdosesum(i,D.pick(1)))*(D.DOTI(i)>t*D.TARGETdosesum(i,D.pick(1)));
+            D.DOT(i)=D.DOT(i)+t*D.TARGETdosesum(i,D.pick(1));
+            D.DOTIfull{i}=(D.DOTIfull{i}-t*D.TARGETdose{i,D.pick(1)}).*(full(D.DOTIfull{i})>t*full(D.TARGETdose{i,D.pick(1)}));
+            D.DOTfull{i}=D.DOTfull{i}+t*D.TARGETdose{i,D.pick(1)};
+        end
+        for i=1:size(C.oar,2)
+            D.DOOI(i)=D.DOOI(i)-t*D.OARdosesum(i,D.pick(1));
+            D.DOOIfull{i}=(D.DOOIfull{i}-t*D.OARdose{i,D.pick(1)});
+        end
+        
+        RCD=[RCD,D.pick(1)];
+        D.penalty=(D.penalty)';
+        kkkkk=0;
+        for kkkk=1:size(C.tg,2)
+            kkkkk=kkkkk+sum(D.DOT(kkkk));
+        end
+        if kkkkk>=ddd
+            waitbar(1);
+        end
+        flg=0;
+        for i=1:size(D.DOTI,2)
+            if ~(D.DOTI(i)==0)
+                flg=1;
+                break;
+            end
+        end
+        if flg==0
+            break;
+        end
+        waitbar(gather((kkkkk)/ddd));
+    y=y+t;
+    end
+    for i=1:size(D.DOOI,2)
+        D.DOOIfull{2,i}=C.oarcst{i}.dose;
+        D.DOOIfull{3,i}=C.oarcst{i}.dose-mean(D.DOOIfull{1,i});
+        D.DOOIfull{4,i}=C.oarcst{i}.dose-min(D.DOOIfull{1,i});
+        if sum(D.DOOIfull{1,i}<0)~=0
+            D.DOOIfull{5,i}=sum(D.DOOIfull{1,i}(find(full(D.DOOIfull{1,i})<0)))/sum(full(D.DOOIfull{1,i})<0);
+            D.DOOIfull{6,i}=sum(full(D.DOOIfull{1,i})<0)/size(full(D.DOOIfull{1,i}),1);
+            D.DOOIfull{7,i}=sort(D.DOOIfull{1,i}(find(full(D.DOOIfull{1,i})<0)));
+        else
+            D.DOOIfull{5,i}=0;
+            D.DOOIfull{6,i}=0;
+            D.DOOIfull{7,i}=[];
+        end
+    end
+    
+    for i=1:size(C.tg,2)
+        D.DOTfull{2,i}=sum(D.DOTfull{1,i})/size(D.DOTfull{1,i},1);
+        D.DOTfull{3,i}=C.tgcst{i}.dose;
+    end
+    assignin('base','pln',pln);
+    D=rmfield(D,'OARdose');
+    D=rmfield(D,'TARGETdose');
+    
+    %changing DOOI format
+    for i = 1:size(C.oarcst, 2)
+        D.DOOIfull{1,i} = C.oarcst{i}.dose - D.DOOIfull{1,i};
+    end
+    
+    assignin('base','D2',D);
+    assignin('base','RCD',RCD);
+    temp1=D.DOOIfull;
+    temp2=D.DOTfull;
+    for i=1:size(D.DOOIfull,2)
+        temp1{1,i}=size(temp1{1,i},1);
+        temp1{7,i}=size(temp1{7,i},1);
+    end
+    for i=1:size(D.DOTfull,2)
+        temp2{1,i}=size(temp2{1,i},1);
+    end
+    assignin('base','OARresult',temp1);
+    assignin('base','TARGETresult',temp2);
+    close(waitb);
+catch
+    close(waitb)
+    error('Error: Some variables may be missing.'); 
+end
+
+
+
+% --- Executes on button press in pushbutton52.
+function pushbutton52_Callback(hObject, eventdata, handles)
+% hObject    handle to pushbutton52 (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+%% Subtract One Tumor and Compare Results
+try
+    %create variables
+    subtractOne = {}; %column = tumor subtracted, %row = score values
+    %assign variables to workspace variables
+    C = evalin('base', 'C');
+    D2 = evalin('base', 'D2');
+        
+    %try taking out each tumor
+    for i=0: size(C.tgcst, 2) %if i=0, no tumors are taken out
+        %find beam pool using organ function
+        findBeamPool(i);
+        %calculate beam pool organ score
+        if i ~= 0
+            Cmod = C;
+            Cmod.tg(:,i) = [];
+            Cmod.tgcst(:,i) = [];
+            assignin('base','C',Cmod);
+            pushbutton51_Callback(handles.pushbutton52, eventdata, handles);
+            assignin('base','C',C);
+        else
+            pushbutton51_Callback(handles.pushbutton52, eventdata, handles);
+        end
+        
+        %put score into database
+        beamscores = evalin('base', 'beamscores');
+        subtractOne{1,i+1} = beamscores{2,1}; 
+    end
+    
+    %display results
+    %make column names
+    colname = {'All Tumors'};
+    for i=1:size(C.tgcst, 2)
+        colname{1,i+1} = strcat('Without T', num2str(i));
+    end
+    
+    f2 = figure;
+    t2 = uitable(f2);
+    t2.Data = subtractOne;
+    t2.ColumnName = colname;
+    t2.RowName = {'Organ Total Score'};
+    t2.Position = [0 200 1000 200];
+    
+    assignin('base','subtractOne',subtractOne);  
+catch
+    error('Error: Some variables may be missing.');
+end
+
+
 
 
 % --- Executes on mouse press over figure background.
