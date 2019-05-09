@@ -6428,7 +6428,9 @@ function pushbutton51_Callback(hObject, eventdata, handles)
 % handles    structure with handles and user data (see GUIDATA)
 %% Calculate Beam Scores
 try
-    scores={};
+    scores={}; %general summary of scores
+    organs={}; %score summary for each organ
+    tumors={}; %score summary for each tumor
     C = evalin('base', 'C');
     D2 = evalin('base', 'D2');
     
@@ -6439,11 +6441,13 @@ try
         if isfield(D2, 'DOTfull')
             condition = D2.DOTfull{1,i} < p;
             underdose = nonzeros(condition.*D2.DOTfull{1,i});
-            t_score = t_score + sum(abs(underdose-p).*2);  
+            t_score = t_score + sum(abs(underdose-p).*2);
+            tumors{1, i} = sum(abs(underdose-p).*2);
         else
             condition = D2.DOT{1,i} < p;
             underdose = nonzeros(condition.*D2.DOT{1,i});
-            t_score = t_score + sum(abs(underdose-p).*2);  
+            t_score = t_score + sum(abs(underdose-p).*2);
+            tumors{1, i} = sum(abs(underdose-p).*2);
         end
     end
     
@@ -6455,30 +6459,33 @@ try
             condition = D2.DOOIfull{1,i} > p;
             overdose = nonzeros(condition.*D2.DOOIfull{1,i});
             o_score = o_score + sum(abs(overdose-p).*2);
+            organs{1, i} = sum(abs(overdose-p).*2);
         else
             condition = D2.DOOI{1,i} > p;
             overdose = nonzeros(condition.*D2.DOOI{1,i});
             o_score = o_score + sum(abs(overdose-p).*2);
+            organs{1, i} = sum(abs(overdose-p).*2);
         end
     end
     
     %calculate normalization score
-    rec = 0;
-    if (t_score == 0) || (o_score == 0)
-        rec = 0;
-    elseif t_score < o_score
-        rec = 10^(floor(log10(o_score/t_score)));
-    else
-        rec = 10^(floor(log10(t_score/o_score)));
-    end
+%     rec = 0;
+%     if (t_score == 0) || (o_score == 0)
+%         rec = 0;
+%     elseif t_score < o_score
+%         rec = 10^(floor(log10(o_score/t_score)));
+%     else
+%         rec = 10^(floor(log10(t_score/o_score)));
+%     end
     
-    prompt = {'Enter normalization factor (recommended is given):'};
-    dlg_title = 'Input';
-    num_lines = 1;
-    defaultans = {num2str(rec)};
-    answer = inputdlg(prompt,dlg_title,num_lines,defaultans);
-    factor = str2double(answer{1});
-   
+%     prompt = {'Enter normalization factor (recommended is given):'};
+%     dlg_title = 'Input';
+%     num_lines = 1;
+%     defaultans = {num2str(rec)};
+%     answer = inputdlg(prompt,dlg_title,num_lines,defaultans);
+%     factor = str2double(answer{1});
+      factor = 1;
+      
     %finalize beam scores
     scores{1, 1} = t_score;
     scores{2, 1} = o_score;
@@ -6490,6 +6497,8 @@ try
         scores{3, 1} = t_score + (factor*o_score);
     end
     assignin('base','beamscores',scores);
+    assignin('base', 'tbeamscores', tumors);
+    assignin('base', 'obeamscores', organs);
    
 catch
     error('Error: Make sure beam angles have been calculated.');
@@ -6680,11 +6689,14 @@ function pushbutton52_Callback(hObject, eventdata, handles)
 try
     %create variables
     subtractOne = {}; %column = tumor subtracted, %row = score values
+    oSubtract = {}; %column = tumor subtracted, %row = organs
+    tSubtract = {}; %column = tumor subtracted, %row = tumors
     %assign variables to workspace variables
     C = evalin('base', 'C');
-    D2 = evalin('base', 'D2');
-        
+    cst = evalin('base', 'cst');
+    
     %try taking out each tumor
+    tic
     for i=0: size(C.tgcst, 2) %if i=0, no tumors are taken out
         %find beam pool using organ function
         findBeamPool(i);
@@ -6700,26 +6712,74 @@ try
             pushbutton51_Callback(handles.pushbutton52, eventdata, handles);
         end
         
-        %put score into database
+        %put scores into database
         beamscores = evalin('base', 'beamscores');
-        subtractOne{1,i+1} = beamscores{2,1}; 
+        tbeamscores = evalin('base', 'tbeamscores');
+        obeamscores = evalin('base', 'obeamscores');
+        
+        subtractOne{1,i+1} = beamscores{2,1}; %overall organ score
+        subtractOne{2,i+1} = beamscores{1,1}; %overall target score
+        %tumor scores
+        skippedtumor = 0; %boolean value to see if tumor has been skipped
+        for j=1: size(C.tgcst, 2)
+            if j == i %this tumor has been taken out
+                tSubtract{j,i+1} = 0;
+                skippedtumor = 1;
+            elseif skippedtumor==1
+                tSubtract{j,i+1} = tbeamscores{1, j-1};
+            else
+                tSubtract{j,i+1} = tbeamscores{1, j};
+            end
+        end
+        %organ scores
+        for j=1: size(C.oarcst, 2)
+            oSubtract{j,i+1} = obeamscores{1, j};
+        end
+        
     end
+    toc
     
-    %display results
+    %display results for summary scores
     %make column names
     colname = {'All Tumors'};
     for i=1:size(C.tgcst, 2)
-        colname{1,i+1} = strcat('Without T', num2str(i));
+        colname{1,i+1} = strcat('Without: ', cst{C.tgindex(i), 2});
     end
     
+    f1 = figure;
+    t1 = uitable(f1);
+    t1.Data = subtractOne;
+    t1.ColumnName = colname;
+    t1.RowName = {'Organ Total Score', 'Tumor Total Score'};
+    t1.Position = [0 200 4000 200];
+    
+    %display results for tumor scores
+    targname = {};
+    for i=1:size(C.tgcst, 2)
+        targname{1,i} = strcat(cst{C.tgindex(i), 2}, ' Score');
+    end
     f2 = figure;
     t2 = uitable(f2);
-    t2.Data = subtractOne;
+    t2.Data = tSubtract;
     t2.ColumnName = colname;
-    t2.RowName = {'Organ Total Score'};
-    t2.Position = [0 200 1000 200];
+    t2.RowName = targname;
+    t2.Position = [0 200 4000 200];
     
-    assignin('base','subtractOne',subtractOne);  
+    orgname = {};
+    for i=1:size(C.oarcst, 2)
+        orgname{1,i} = strcat(cst{C.oarindex(i), 2}, ' Score');
+    end
+    f3 = figure;
+    t3 = uitable(f3);
+    t3.Data = oSubtract;
+    t3.ColumnName = colname;
+    t3.RowName = orgname;
+    t3.Position = [0 200 4000 200];
+    
+    
+    assignin('base','subtractOne',subtractOne);
+    assignin('base','tsubtractOne', tSubtract);
+    assignin('base','osubtractOne', oSubtract);
 catch
     error('Error: Some variables may be missing.');
 end
