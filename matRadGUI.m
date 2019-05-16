@@ -1865,7 +1865,7 @@ for s = 1:size(cst,1)
 end
 set(handles.legendTable,'String',tmpString);
 
-columnname = {'VOI name','VOI type','priority','obj. / const.','penalty','dose', 'EUD','volume','robustness'};
+columnname = {'VOI name','VOI type','priority','obj. / const.','penalty','dose', 'EUD','volume','robustness', 'Restraint'};
 
 AllObjectiveFunction = {'square underdosing','square overdosing','square deviation', 'mean', 'EUD',...
                         'min dose constraint','max dose constraint',...
@@ -1873,10 +1873,11 @@ AllObjectiveFunction = {'square underdosing','square overdosing','square deviati
                         'min EUD constraint','max EUD constraint',...
                         'max DVH constraint','min DVH constraint',...
                         'max DVH objective' ,'min DVH objective'};
+RestraintType = {'None', 'Average Overdose', 'No Overdose'};
 
 columnformat = {cst(:,2)',{'OAR','TARGET'},'numeric',...
        AllObjectiveFunction,...
-       'numeric','numeric','numeric','numeric',{'none','WC','prob'}};
+       'numeric','numeric','numeric','numeric',{'none','WC','prob'},RestraintType};
    
 numOfObjectives = 0;
 for i = 1:size(cst,1)
@@ -1908,6 +1909,8 @@ for i = 1:size(cst,1)
        data{Counter,7}  = cst{i,6}(j).EUD;
        data{Counter,8}  = cst{i,6}(j).volume;
        data{Counter,9}  = cst{i,6}(j).robustness;
+       %Restraint Type
+       data{Counter,10} = cst{i,6}(j).restraint;
        
        Counter = Counter +1;
        end
@@ -1974,6 +1977,7 @@ for i = 1:size(OldCst,1)
               NewCst{Cnt,4}(CntObjF,1).EUD        = data{j,7};
               NewCst{Cnt,4}(CntObjF,1).volume     = data{j,8};
               NewCst{Cnt,4}(CntObjF,1).robustness = data{j,9};
+              NewCst{Cnt,4}(CntObjF,1).restraint = data{j,10};
              
             end
             
@@ -6785,6 +6789,253 @@ catch
 end
 
 
+% --- function to return bool whether picked beam doesn't break restraint
+function bool = checkRestraint(D)
+%% Check if Picked Beam Does not Break Restraints
+try
+   bool = 1; %initially set to 1, will AND with other bools
+   C=evalin('base','C');
+   t=evalin('base','t');
+   Dcopy = D;
+   %update dosages
+   for i=1:size(C.tg,2)
+        Dcopy.DOTI(i)=(Dcopy.DOTI(i)-t*Dcopy.TARGETdosesum(i,Dcopy.pick(1)))*(Dcopy.DOTI(i)>t*Dcopy.TARGETdosesum(i,Dcopy.pick(1)));
+        Dcopy.DOT(i)=Dcopy.DOT(i)+t*Dcopy.TARGETdosesum(i,Dcopy.pick(1));
+        Dcopy.DOTIfull{i}=(Dcopy.DOTIfull{i}-t*Dcopy.TARGETdose{i,Dcopy.pick(1)}).*(full(Dcopy.DOTIfull{i})>t*full(Dcopy.TARGETdose{i,Dcopy.pick(1)}));
+        Dcopy.DOTfull{i}=Dcopy.DOTfull{i}+t*Dcopy.TARGETdose{i,Dcopy.pick(1)};
+   end
+    for i=1:size(C.oar,2)
+        disp(i)
+        Dcopy.DOOI(i)=Dcopy.DOOI(i)-t*Dcopy.OARdosesum(i,Dcopy.pick(1));
+        Dcopy.DOOIfull{i}=(Dcopy.DOOIfull{i}-t*Dcopy.OARdose{i,Dcopy.pick(1)});
+    end
+    %check dosages for each organ
+    for i=1:size(C.oar,2)
+        restraint = C.oarcst{1,i}.restraint;
+        if strcmp(restraint, 'None')
+            bool = and(bool, 1);
+        elseif strcmp(restraint, 'Average Overdose')
+            bool = and(bool, 1);
+        elseif strcmp(restraint, 'No Overdose')
+            check = (all(Dcopy.DOOIfull{i}(:) >0));
+            if check == 0
+                bool = 0;
+                break;
+            end    
+            %bool = and(bool, check);
+        else
+            fprintf('uh oh')   
+        end
+    end
+   
+   
+   
+catch
+    error('Error: Missing Variables.'); 
+end
+
+
+% --- Executes on button press in pushbutton53.
+function pushbutton53_Callback(hObject, eventdata, handles)
+% hObject    handle to pushbutton53 (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+%% Major Function for scoring
+% Idea: looks at each organ's limit through individual functions.
+% Function return 1 if beam can be picked, 0 if beam can't be picked.
+% Overall function is the whole organ calculation (fastest)
+
+y=0;
+try
+    tic %start timing
+    set(handles.pushbutton53,'Enable','off');
+    prompt = {'Enter maximum dose of each beam:'};
+    dlg_title = 'Input';
+    num_lines = 1;
+    defaultans = {'5'};
+    answer = inputdlg(prompt,dlg_title,num_lines,defaultans);
+    waitb = waitbar(0,'Plz wait :P ....');
+    %ct=evalin('base','ct');
+    pln=evalin('base','pln2');
+    %cst=evalin('base','cst');
+    B=evalin('base','B');
+    C=evalin('base','C');
+    D=evalin('base','D');
+    %answer=evalin('base','answer');
+    t=str2double(answer{1}); % t is the number of beams of each tumor
+    assignin('base','t',t);
+    temp.numOfBeams=pln.propStf.numOfBeams;
+    temp.isoCenter=pln.propStf.isoCenter;
+    temp.gantryAngles=pln.propStf.gantryAngles;
+    temp.couchAngles=pln.propStf.couchAngles;
+    pln.propStf.numOfBeams=0;%t*size(C.tg,2);
+    pln.propStf.isoCenter=[];
+    pln.propStf.gantryAngles=[];
+    pln.propStf.couchAngles=[];
+    D.penalty(1,:)=zeros(1,temp.numOfBeams);
+    bused=zeros(1,temp.numOfBeams);
+    D.penalty(2,:)=1:temp.numOfBeams;
+    D.penalty(3,:)=zeros(1,temp.numOfBeams);
+    D.penalty(4,:)=zeros(1,temp.numOfBeams);
+    RCD=[];
+    %D.DOT=zeros(1,size(C.tg,2));
+    ddd=0;
+    
+    for kk=1:temp.numOfBeams
+        for i=1:size(C.tg,2)
+            D.TARGETdosesum(i,kk)=sum(D.TARGETdose{i,kk});
+        end
+    end
+    for kk=1:temp.numOfBeams
+        for i=1:size(C.oar,2)
+            D.OARdosesum(i,kk)=sum(D.OARdose{i,kk});
+        end
+    end
+    clear temp1;
+    clear temp2;
+    clear temp3;
+    
+    for kk=1:size(C.tg,2)
+        D.DOT(kk)=0;
+        D.DOTI(kk)=C.tgcst{kk}.dose*size(C.tg{kk},1);
+        ddd=ddd+size(C.tg{kk},1)*C.tgcst{kk}.dose;
+        D.DOTfull{kk}=zeros(size(C.tg{kk}));
+        D.DOTIfull{kk}=C.tgcst{kk}.dose.*ones(size(C.tg{kk}));
+    end
+    for kk=1:size(C.oar,2)
+        D.DOOI(kk)=C.oarcst{kk}.dose*size(C.oar{kk},1);
+        D.DOOIfull{kk}=C.oarcst{kk}.dose.*ones(size(C.oar{kk}));
+    end
+    
+    for kk=1:(size(B.bs{1},2)*size(C.tg,2)+size(C.tg,2)*(size(C.tg,2)-1))%=1:size(C.tg,2)
+        D.penalty(3,:)=zeros(1,temp.numOfBeams);
+        D.penalty(4,:)=zeros(1,temp.numOfBeams);
+        for i=1:size(C.tgcst,2)
+            td=t*(D.TARGETdosesum(i,:));
+            D.penalty(3,:)=D.penalty(3,:)+(td.^2.*(D.DOTI(i)>td)+D.DOTI(i).^2.*(D.DOTI(i)<=td)).*C.tgcst{i}.penalty;
+        end
+        for i=1:size(C.oarcst,2) 
+            td=t*D.OARdosesum(i,:);
+            tcp1=D.DOOI(i)>=td;
+            tcp2=D.DOOI(i)<td;
+            D.penalty(4,:)=D.penalty(4,:)+((td.*tcp1+td.*tcp2+((td-D.DOOI(i)).*tcp2).^2)).*C.oarcst{i}.penalty;
+        end
+        D.penalty(1,:)=D.penalty(4,:)./D.penalty(3,:);
+        for i=1:size(bused,2)
+            if bused(i)==1
+                D.penalty(1,i)=inf;
+            end
+        end
+        D.penalty=(D.penalty)';
+        D.penaltytemp=sortrows(D.penalty,1);
+        
+        assignin('base','penaltytemp',D.penaltytemp);
+        %looping to pick beam that doesn't break restraints
+        D.pick=D.penaltytemp(1,2)';
+        for i=1:size(D.penaltytemp,1)
+            D.pick=D.penaltytemp(i,2)'; %chosen beam
+            if isinf(D.penaltytemp(i,1)) %if we've run out of beams, pick best beam
+                D.pick=D.penaltytemp(1,2)';
+                break;
+            end
+            checked = checkRestraint(D);
+            if checked == 1 %if breaks restraint, try next beam
+                break;  
+            end
+        end
+        
+        pln.propStf.isoCenter(kk,:)=temp.isoCenter(D.pick(1),:);
+        pln.propStf.gantryAngles=[pln.propStf.gantryAngles,temp.gantryAngles(D.pick(1))];
+        pln.propStf.couchAngles=[pln.propStf.couchAngles,temp.couchAngles(D.pick(1))];
+        pln.propStf.numOfBeams=pln.propStf.numOfBeams+1;
+        %
+        bused(D.pick(1))=1;
+        %
+        for i=1:size(C.tg,2)
+            D.DOTI(i)=(D.DOTI(i)-t*D.TARGETdosesum(i,D.pick(1)))*(D.DOTI(i)>t*D.TARGETdosesum(i,D.pick(1)));
+            D.DOT(i)=D.DOT(i)+t*D.TARGETdosesum(i,D.pick(1));
+            D.DOTIfull{i}=(D.DOTIfull{i}-t*D.TARGETdose{i,D.pick(1)}).*(full(D.DOTIfull{i})>t*full(D.TARGETdose{i,D.pick(1)}));
+            D.DOTfull{i}=D.DOTfull{i}+t*D.TARGETdose{i,D.pick(1)};
+        end
+        for i=1:size(C.oar,2)
+            D.DOOI(i)=D.DOOI(i)-t*D.OARdosesum(i,D.pick(1));
+            D.DOOIfull{i}=(D.DOOIfull{i}-t*D.OARdose{i,D.pick(1)});
+        end
+        
+        RCD=[RCD,D.pick(1)];
+        D.penalty=(D.penalty)';
+        kkkkk=0;
+        
+        for kkkk=1:size(C.tg,2)
+            kkkkk=kkkkk+sum(D.DOT(kkkk));
+        end
+        if kkkkk>=ddd
+            waitbar(1);
+        end
+        flg=0;
+        for i=1:size(D.DOTI,2)
+            if ~(D.DOTI(i)==0)
+                flg=1;
+                break;
+            end
+        end
+        if flg==0
+            break;
+        end
+        waitbar(gather((kkkkk)/ddd));
+    y=y+t;
+    end
+    
+    for i=1:size(D.DOOI,2)
+        D.DOOIfull{2,i}=C.oarcst{i}.dose;
+        D.DOOIfull{3,i}=C.oarcst{i}.dose-mean(D.DOOIfull{1,i});
+        D.DOOIfull{4,i}=C.oarcst{i}.dose-min(D.DOOIfull{1,i});
+        if sum(D.DOOIfull{1,i}<0)~=0
+            D.DOOIfull{5,i}=sum(D.DOOIfull{1,i}(find(full(D.DOOIfull{1,i})<0)))/sum(full(D.DOOIfull{1,i})<0);
+            D.DOOIfull{6,i}=sum(full(D.DOOIfull{1,i})<0)/size(full(D.DOOIfull{1,i}),1);
+            D.DOOIfull{7,i}=sort(D.DOOIfull{1,i}(find(full(D.DOOIfull{1,i})<0)));
+        else
+            D.DOOIfull{5,i}=0;
+            D.DOOIfull{6,i}=0;
+            D.DOOIfull{7,i}=[];
+        end
+    end
+    for i=1:size(C.tg,2)
+        D.DOTfull{2,i}=sum(D.DOTfull{1,i})/size(D.DOTfull{1,i},1);
+        D.DOTfull{3,i}=C.tgcst{i}.dose;
+    end
+    assignin('base','pln',pln);
+    D=rmfield(D,'OARdose');
+    D=rmfield(D,'TARGETdose');
+    
+    %changing DOOI format
+    for i = 1:size(C.oarcst, 2)
+        D.DOOIfull{1,i} = C.oarcst{i}.dose - D.DOOIfull{1,i};
+    end
+    
+    assignin('base','D2',D);
+    assignin('base','RCD',RCD);
+    temp1=D.DOOIfull;
+    temp2=D.DOTfull;
+    for i=1:size(D.DOOIfull,2)
+        temp1{1,i}=size(temp1{1,i},1);
+        temp1{7,i}=size(temp1{7,i},1);
+    end
+    for i=1:size(D.DOTfull,2)
+        temp2{1,i}=size(temp2{1,i},1);
+    end
+    assignin('base','OARresult',temp1);
+    assignin('base','TARGETresult',temp2);
+    set(handles.pushbutton53,'Enable','on');
+    toc %end timing
+    close(waitb);
+catch
+    set(handles.pushbutton53,'Enable','on');
+    close(waitb);
+    error('Please make sure beam pool has been created.\n');
+end
+
+
 
 
 % --- Executes on mouse press over figure background.
@@ -6792,3 +7043,4 @@ function figure1_ButtonDownFcn(hObject, eventdata, handles)
 % hObject    handle to figure1 (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
+
