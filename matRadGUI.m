@@ -5378,7 +5378,8 @@ try
         D.DOOI(kk)=C.oarcst{kk}.dose*size(C.oar{kk},1);
         D.DOOIfull{kk}=C.oarcst{kk}.dose.*ones(size(C.oar{kk}));
     end
-    for kk=1:(size(B.bs{1},2)*size(C.tg,2)+size(C.tg,2)*(size(C.tg,2)-1))%=1:size(C.tg,2)
+    
+    for kk=1:(size(B.bs{1},2)*size(C.tg,2)+size(C.tg,2)*(size(C.tg,2)-1))%number of beams
         D.penalty(3,:)=zeros(1,temp.numOfBeams);
         D.penalty(4,:)=zeros(1,temp.numOfBeams);
         for i=1:size(C.tgcst,2)
@@ -6793,22 +6794,23 @@ end
 function bool = checkRestraint(D)
 %% Check if Picked Beam Does not Break Restraints
 try
-   bool = 1; %initially set to 1, will AND with other bools
-   C=evalin('base','C');
-   t=evalin('base','t');
-   Dcopy = D;
-   %update dosages
-   for i=1:size(C.tg,2)
-        Dcopy.DOTI(i)=(Dcopy.DOTI(i)-t*Dcopy.TARGETdosesum(i,Dcopy.pick(1)))*(Dcopy.DOTI(i)>t*Dcopy.TARGETdosesum(i,Dcopy.pick(1)));
-        Dcopy.DOT(i)=Dcopy.DOT(i)+t*Dcopy.TARGETdosesum(i,Dcopy.pick(1));
-        Dcopy.DOTIfull{i}=(Dcopy.DOTIfull{i}-t*Dcopy.TARGETdose{i,Dcopy.pick(1)}).*(full(Dcopy.DOTIfull{i})>t*full(Dcopy.TARGETdose{i,Dcopy.pick(1)}));
-        Dcopy.DOTfull{i}=Dcopy.DOTfull{i}+t*Dcopy.TARGETdose{i,Dcopy.pick(1)};
-   end
+    bool = 1; %initially set to 1 (doesn't break restraint), will AND with other bools
+    C=evalin('base','C');
+    t=evalin('base','t');
+    Dcopy = D;
+    %update dosages
+%     for i=1:size(C.tg,2)
+%         Dcopy.DOTI(i)=(Dcopy.DOTI(i)-t*Dcopy.TARGETdosesum(i,Dcopy.pick(1)))*(Dcopy.DOTI(i)>t*Dcopy.TARGETdosesum(i,Dcopy.pick(1)));
+%         Dcopy.DOT(i)=Dcopy.DOT(i)+t*Dcopy.TARGETdosesum(i,Dcopy.pick(1));
+%         Dcopy.DOTIfull{i}=(Dcopy.DOTIfull{i}-t*Dcopy.TARGETdose{i,Dcopy.pick(1)}).*(full(Dcopy.DOTIfull{i})>t*full(Dcopy.TARGETdose{i,Dcopy.pick(1)}));
+%         Dcopy.DOTfull{i}=Dcopy.DOTfull{i}+t*Dcopy.TARGETdose{i,Dcopy.pick(1)};
+%     end
     for i=1:size(C.oar,2)
-        disp(i)
+        %disp(i)
         Dcopy.DOOI(i)=Dcopy.DOOI(i)-t*Dcopy.OARdosesum(i,Dcopy.pick(1));
         Dcopy.DOOIfull{i}=(Dcopy.DOOIfull{i}-t*Dcopy.OARdose{i,Dcopy.pick(1)});
     end
+    assignin('base','copy',Dcopy);
     %check dosages for each organ
     for i=1:size(C.oar,2)
         restraint = C.oarcst{1,i}.restraint;
@@ -6817,10 +6819,13 @@ try
         elseif strcmp(restraint, 'Average Overdose')
             bool = and(bool, 1);
         elseif strcmp(restraint, 'No Overdose')
-            check = (all(Dcopy.DOOIfull{i}(:) >0));
+            check = (all(Dcopy.DOOIfull{i}(:) > 0));
+            %disp(Dcopy.DOOIfull{i}(:))
+            %disp(check)
+            %disp(check)
             if check == 0
                 bool = 0;
-                break;
+                return;
             end    
             %bool = and(bool, check);
         else
@@ -6878,7 +6883,6 @@ try
     D.penalty(3,:)=zeros(1,temp.numOfBeams);
     D.penalty(4,:)=zeros(1,temp.numOfBeams);
     RCD=[];
-    %D.DOT=zeros(1,size(C.tg,2));
     ddd=0;
     
     for kk=1:temp.numOfBeams
@@ -6907,9 +6911,11 @@ try
         D.DOOIfull{kk}=C.oarcst{kk}.dose.*ones(size(C.oar{kk}));
     end
     
-    for kk=1:(size(B.bs{1},2)*size(C.tg,2)+size(C.tg,2)*(size(C.tg,2)-1))%=1:size(C.tg,2)
+    for kk=1:(size(B.bs{1},2)*size(C.tg,2)+size(C.tg,2)*(size(C.tg,2)-1))%loop for number of beams
         D.penalty(3,:)=zeros(1,temp.numOfBeams);
         D.penalty(4,:)=zeros(1,temp.numOfBeams);
+        
+        %calculate scores
         for i=1:size(C.tgcst,2)
             td=t*(D.TARGETdosesum(i,:));
             D.penalty(3,:)=D.penalty(3,:)+(td.^2.*(D.DOTI(i)>td)+D.DOTI(i).^2.*(D.DOTI(i)<=td)).*C.tgcst{i}.penalty;
@@ -6920,6 +6926,8 @@ try
             tcp2=D.DOOI(i)<td;
             D.penalty(4,:)=D.penalty(4,:)+((td.*tcp1+td.*tcp2+((td-D.DOOI(i)).*tcp2).^2)).*C.oarcst{i}.penalty;
         end
+        
+        %calculate total scores
         D.penalty(1,:)=D.penalty(4,:)./D.penalty(3,:);
         for i=1:size(bused,2)
             if bused(i)==1
@@ -6930,42 +6938,39 @@ try
         D.penaltytemp=sortrows(D.penalty,1);
         
         assignin('base','penaltytemp',D.penaltytemp);
-        %looping to pick beam that doesn't break restraints
-        D.pick=D.penaltytemp(1,2)';
-        for i=1:size(D.penaltytemp,1)
-            D.pick=D.penaltytemp(i,2)'; %chosen beam
-            if isinf(D.penaltytemp(i,1)) %if we've run out of beams, pick best beam
-                D.pick=D.penaltytemp(1,2)';
-                break;
+        %Pick beam that doesn't break restraints
+        D.pick = D.penaltytemp(1,2)';
+        checked = checkRestraint(D);
+        
+        if checked == 0 %breaks restraint
+            bused(D.pick(1))=1;
+            D.penalty=(D.penalty)';
+            
+        else %beam does not break restraint and checked == 1
+            pln.propStf.isoCenter(kk,:)=temp.isoCenter(D.pick(1),:);
+            pln.propStf.gantryAngles=[pln.propStf.gantryAngles,temp.gantryAngles(D.pick(1))];
+            pln.propStf.couchAngles=[pln.propStf.couchAngles,temp.couchAngles(D.pick(1))];
+            pln.propStf.numOfBeams=pln.propStf.numOfBeams+1;
+            %
+            bused(D.pick(1))=1;
+            %
+            for i=1:size(C.tg,2)
+                D.DOTI(i)=(D.DOTI(i)-t*D.TARGETdosesum(i,D.pick(1)))*(D.DOTI(i)>t*D.TARGETdosesum(i,D.pick(1)));
+                D.DOT(i)=D.DOT(i)+t*D.TARGETdosesum(i,D.pick(1));
+                D.DOTIfull{i}=(D.DOTIfull{i}-t*D.TARGETdose{i,D.pick(1)}).*(full(D.DOTIfull{i})>t*full(D.TARGETdose{i,D.pick(1)}));
+                D.DOTfull{i}=D.DOTfull{i}+t*D.TARGETdose{i,D.pick(1)};
             end
-            checked = checkRestraint(D);
-            if checked == 1 %if breaks restraint, try next beam
-                break;  
+            for i=1:size(C.oar,2)
+                D.DOOI(i)=D.DOOI(i)-t*D.OARdosesum(i,D.pick(1));
+                D.DOOIfull{i}=(D.DOOIfull{i}-t*D.OARdose{i,D.pick(1)});
             end
+
+            RCD=[RCD,D.pick(1)];
+            D.penalty=(D.penalty)';
+            kkkkk=0;
         end
         
-        pln.propStf.isoCenter(kk,:)=temp.isoCenter(D.pick(1),:);
-        pln.propStf.gantryAngles=[pln.propStf.gantryAngles,temp.gantryAngles(D.pick(1))];
-        pln.propStf.couchAngles=[pln.propStf.couchAngles,temp.couchAngles(D.pick(1))];
-        pln.propStf.numOfBeams=pln.propStf.numOfBeams+1;
-        %
-        bused(D.pick(1))=1;
-        %
-        for i=1:size(C.tg,2)
-            D.DOTI(i)=(D.DOTI(i)-t*D.TARGETdosesum(i,D.pick(1)))*(D.DOTI(i)>t*D.TARGETdosesum(i,D.pick(1)));
-            D.DOT(i)=D.DOT(i)+t*D.TARGETdosesum(i,D.pick(1));
-            D.DOTIfull{i}=(D.DOTIfull{i}-t*D.TARGETdose{i,D.pick(1)}).*(full(D.DOTIfull{i})>t*full(D.TARGETdose{i,D.pick(1)}));
-            D.DOTfull{i}=D.DOTfull{i}+t*D.TARGETdose{i,D.pick(1)};
-        end
-        for i=1:size(C.oar,2)
-            D.DOOI(i)=D.DOOI(i)-t*D.OARdosesum(i,D.pick(1));
-            D.DOOIfull{i}=(D.DOOIfull{i}-t*D.OARdose{i,D.pick(1)});
-        end
-        
-        RCD=[RCD,D.pick(1)];
-        D.penalty=(D.penalty)';
-        kkkkk=0;
-        
+        %update waitbar
         for kkkk=1:size(C.tg,2)
             kkkkk=kkkkk+sum(D.DOT(kkkk));
         end
@@ -6974,7 +6979,7 @@ try
         end
         flg=0;
         for i=1:size(D.DOTI,2)
-            if ~(D.DOTI(i)==0)
+            if ~(D.DOTI(i)==0) %if target doses have been fulfilled, break
                 flg=1;
                 break;
             end
@@ -6984,6 +6989,7 @@ try
         end
         waitbar(gather((kkkkk)/ddd));
     y=y+t;
+
     end
     
     for i=1:size(D.DOOI,2)
@@ -7032,7 +7038,7 @@ try
 catch
     set(handles.pushbutton53,'Enable','on');
     close(waitb);
-    error('Please make sure beam pool has been created.\n');
+    error('Please make sure beam pool has been created.');
 end
 
 
