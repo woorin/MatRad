@@ -441,7 +441,6 @@ try
     % delete existing workspace - parse variables from base workspace
     AllVarNames = evalin('base','who');
     RefVarNames = {'ct','cst','pln','stf','dij','resultGUI'};
-    
     for i = 1:length(RefVarNames)  
         if sum(ismember(AllVarNames,RefVarNames{i}))>0
             evalin('base',['clear ', RefVarNames{i}]);
@@ -466,6 +465,7 @@ try
     handles.TableChanged = false;
     set(handles.popupTypeOfPlot,'Value',1);
     cst = matRad_computeVoiContoursWrapper(cst,ct);
+    
 
     assignin('base','ct',ct);
     assignin('base','cst',cst);
@@ -1826,7 +1826,6 @@ end
 
 % displays the cst in the GUI
 function cst = setCstTable(handles,cst)
-
 colorAssigned = true;
 
 % check whether all structures have an assigned color
@@ -1865,6 +1864,7 @@ for s = 1:size(cst,1)
 end
 set(handles.legendTable,'String',tmpString);
 
+
 columnname = {'VOI name','VOI type','priority','obj. / const.','penalty','dose', 'EUD','volume','robustness', 'Restraint'};
 
 AllObjectiveFunction = {'square underdosing','square overdosing','square deviation', 'mean', 'EUD',...
@@ -1891,7 +1891,6 @@ data = cell(dimArr);
 data(:,6) = {''};
 Counter = 1;
 for i = 1:size(cst,1)
-   
    if strcmp(cst(i,3),'IGNORED')~=1
        for j=1:size(cst{i,6},1)
        %VOI
@@ -1910,7 +1909,7 @@ for i = 1:size(cst,1)
        data{Counter,8}  = cst{i,6}(j).volume;
        data{Counter,9}  = cst{i,6}(j).robustness;
        %Restraint Type
-       data{Counter,10} = cst{i,6}(j).restraint;
+       data{Counter,10} = 'None';
        
        Counter = Counter +1;
        end
