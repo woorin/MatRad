@@ -4599,7 +4599,7 @@ B.bs{1}=double(B.bs{1});
 % %
 
 % % pln modify
-j=size(C.tgc,2);
+j=size(C.tgc,2); %number of targets
 x=sum(B.bnv); % each target shares how many beams
 T=[];
 for i=1:j
