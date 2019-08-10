@@ -4430,7 +4430,7 @@ function pushbutton33_Callback(hObject, eventdata, handles)
 % hObject    handle to pushbutton33 (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
-% % generate base information cube B
+%% generate base information cube B
 fprintf('Create Beam Pool: ')
 
 try
@@ -4653,11 +4653,13 @@ end
 % % pln modify done
 % %
 %handles.State = 2;
+newb = 0;
 fprintf('setting handles: %d', handles.State)
 assignin('base','pln',pln);
 assignin('base','B',B);
 assignin('base','C',C);
 assignin('base','x',x);
+assignin('base','newb',newb);
 %assignin('base','answer',answer);
 waitbar(1);
 close(waitb);
@@ -4806,25 +4808,26 @@ try
     pln.propStf.numOfBeams=1;
     y=0; %%%
     yyy=1;
-    ttt=x*size(C.tg,2)+1;
+    ttt=x*size(C.tg,2)+1; %where N beams start
     jjj=1;
-    for k=C.tgindex
+    
+    for k=C.tgindex %for each target (3 spheres of target generated beams
         t=1;
         for kk=C.tgindex
             if kk~=k
                 cst{kk,6}=[];
             else
-                %cst{kk,4}{1}=double(sub2ind(B.dim,ceil(C.tgc{t}(1)/B.resolution(1)),ceil(C.tgc{t}(2)/B.resolution(2)),ceil(C.tgc{t}(3)/B.resolution(3))));
                 cst{kk,6}=C.tgcst{t};
             end
             t=t+1;
         end
-        for j=1:(x+size(T,1)-1)
-            if(j<=x)
+        
+        for j=1:(x+size(T,1)-1) %going over each 36 beams for every tumor
+            if(j<=x) %if j is a normal beam (not a beam between targets)
                 pln.propStf.gantryAngles=temp2.gantryangles(jjj);
                 pln.propStf.couchAngles=temp2.couchangles(jjj);
                 pln.propStf.isoCenter=temp2.isocenter(jjj,:);
-            else
+            else %beam is a beam between targets
                 pln.propStf.gantryAngles=temp2.gantryangles(ttt);
                 pln.propStf.couchAngles=temp2.couchangles(ttt);
                 pln.propStf.isoCenter=temp2.isocenter(ttt,:);
@@ -4838,6 +4841,7 @@ try
             end
             % % simplify dose matrix %%%%%% not simplify, just vector sum
             %fprintf('calculating beam %d TARGET dosage and OAR dosage of %d beams\n',j+y+(size(T,1)-1)*(yyy-1),temp2.numofbeams);
+            
             for i=1:size(C.tg,2)
                 if j<=x
                     D.TARGETdose{i,jjj}=sum(dij.physicalDose{1}(C.tg{i},:),2);%/size(dij.physicalDose{1},2);
@@ -4857,6 +4861,7 @@ try
                     D.TARGETdoseap{i,ttt}=D.TARGETdoseap{i,ttt}';
                 end
             end
+            
             for i=1:size(C.oar,2)
                 if j<=x
                     D.OARdose{i,jjj}=sum(dij.physicalDose{1}(C.oar{i},:),2);%/size(dij.physicalDose{1},2);
@@ -4876,22 +4881,29 @@ try
                     D.OARdoseap{i,ttt}=D.OARdoseap{i,ttt}';
                 end
             end
+            
             if j<=x
                 jjj=jjj+1;
             else
                 ttt=ttt+1;
             end
+            
             waitbar((j+y+(size(T,1)-1)*(yyy-1))/(size(C.tg,2)*x));
         end
+
         y=y+x;
-        yyy=yyy+1;
+        yyy=yyy+1; 
     end
+    
+    
+    
     t=1;
     for k=C.tgindex
         cst{k,6}=C.tgcst{t};
         cst{k,4}{1}=C.tg{t};
         t=t+1;
     end
+    
     pln.propStf.gantryAngles=temp2.gantryangles;
     pln.propStf.couchAngles=temp2.couchangles;
     pln.propStf.numOfBeams=temp2.numofbeams;
@@ -6571,7 +6583,8 @@ try
         D.DOOI(kk)=C.oarcst{kk}.dose*size(C.oar{kk},1);
         D.DOOIfull{kk}=C.oarcst{kk}.dose.*ones(size(C.oar{kk}));
     end
-    for kk=1:(size(B.bs{1},2)*size(C.tg,2)+size(C.tg,2)*(size(C.tg,2)-1))%=1:size(C.tg,2)
+    %for kk=1:(size(B.bs{1},2)*size(C.tg,2)+size(C.tg,2)*(size(C.tg,2)-1))%=1:size(C.tg,2)
+    for kk=1:temp.numOfBeams
         D.penalty(3,:)=zeros(1,temp.numOfBeams);
         D.penalty(4,:)=zeros(1,temp.numOfBeams);
         for i=1:size(C.tgcst,2)
@@ -6851,6 +6864,7 @@ function pushbutton53_Callback(hObject, eventdata, handles)
 
 y=0;
 try
+    fprintf('Major Function: ')
     tic %start timing
     set(handles.pushbutton53,'Enable','off');
     prompt = {'Enter maximum dose of each beam:'};
@@ -6910,7 +6924,8 @@ try
         D.DOOIfull{kk}=C.oarcst{kk}.dose.*ones(size(C.oar{kk}));
     end
     
-    for kk=1:(size(B.bs{1},2)*size(C.tg,2)+size(C.tg,2)*(size(C.tg,2)-1))%loop for number of beams
+    %for kk=1:(size(B.bs{1},2)*size(C.tg,2)+size(C.tg,2)*(size(C.tg,2)-1))%loop for number of beams
+    for kk=1:temp.numOfBeams
         D.penalty(3,:)=zeros(1,temp.numOfBeams);
         D.penalty(4,:)=zeros(1,temp.numOfBeams);
         
@@ -7041,6 +7056,207 @@ catch
 end
 
 
+% --- Executes on button press in pushbutton54.
+function pushbutton54_Callback(hObject, eventdata, handles)
+% hObject    handle to pushbutton54 (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+%% Create New Beam Pool
+fprintf('Creating New Beam Pool: ')
+
+try
+
+%start timing
+tic
+set(handles.pushbutton54,'Enable','off');
+waitb = waitbar(0,'Plz wait :P ....');
+ct=evalin('base','ct');
+pln=evalin('base','pln');
+pln2=evalin('base','pln2');
+cst=evalin('base','cst');
+x=evalin('base','x');
+C=evalin('base','C');
+
+numNB=(size(C.tg,2)-1)*size(C.tg,2); %number of N beams in between targets
+startN = pln2.propStf.numOfBeams - numNB + 1; %number N beams start at
+
+fprintf('modify\n')
+%MODIFY
+pln.propStf.numOfBeams=2 + numNB; %picked beam + in between beams
+pln.propStf.isoCenter=[];
+pln.propStf.gantryAngles=[];
+pln.propStf.couchAngles=[];
+
+fprintf('first beam\n')
+%first beam
+pln.propStf.isoCenter=[336, 330.0438, 200];
+pln.propStf.gantryAngles(1,1)=144;
+pln.propStf.couchAngles(1,1)=108;
+
+fprintf('second beam\n')
+%second beam
+second = [312,312,240];
+pln.propStf.isoCenter= [pln.propStf.isoCenter;second];
+pln.propStf.gantryAngles(1,2)=36;
+pln.propStf.couchAngles(1,2)=120;
+
+fprintf('old beams\n')
+%always keep the beams in between the targets to the end
+count = 3;
+for b=startN:pln2.propStf.numOfBeams
+    pln.propStf.isoCenter(count,:) = pln2.propStf.isoCenter(b,:);
+    pln.propStf.gantryAngles(1,count) = pln2.propStf.gantryAngles(1,b);
+    pln.propStf.couchAngles(1,count)=pln2.propStf.couchAngles(1,b);
+    count = count + 1;    
+end
+
+% for i=1:j
+%     if ~isempty(pln.propStf.isoCenter)
+%         pln.propStf.isoCenter=[pln.propStf.isoCenter;ones(x,1).*T(i,:)];
+%         pln.propStf.gantryAngles=[pln.propStf.gantryAngles,B.bs{2}];
+%         pln.propStf.couchAngles=[pln.propStf.couchAngles,B.bs{1}];
+%     else
+%         pln.propStf.isoCenter=[ones(x,1).*T(i,:)];
+%         pln.propStf.gantryAngles=[B.bs{2}];
+%         pln.propStf.couchAngles=[B.bs{1}];
+%     end
+% end
+% for i=1:j
+%     for ii=1:j
+%         if ii~=i
+%             ypp=T(ii,1)-T(i,1);
+%             xpp=T(ii,2)-T(i,2);
+%             zpp=T(ii,3)-T(i,3);
+%             rpp=pdist([T(ii,:);T(i,:)],'euclidean');
+%             if xpp<0
+%                 ctt=180*(pi-atan(zpp/xpp))/pi;
+%             else
+%                 ctt=180*(-atan(zpp/xpp))/pi;
+%             end
+%             gtt=acos(-ypp/rpp)*180/pi;
+%             itt=T(i,:);
+%             pln.propStf.isoCenter=[pln.propStf.isoCenter;itt];
+%             pln.propStf.gantryAngles=[pln.propStf.gantryAngles,gtt];
+%             pln.propStf.couchAngles=[pln.propStf.couchAngles,ctt];
+%         end
+%     end
+% end
+% % pln modify done
+% %
+%handles.State = 2;
+fprintf('setting handles: %d', handles.State)
+newb = 1;
+
+assignin('base','pln',pln); %assign modified pln to pln for dosage calc
+assignin('base','newb',newb);
+waitbar(1);
+close(waitb);
+set(handles.pushbutton54,'Enable','on');
+toc %end timing of entire function
+
+catch
+set(handles.pushbutton54,'Enable','on');
+close(waitb);
+error('Maybe some variables missing\n');
+end
+
+% --- Executes on button press in pushbutton55.
+function pushbutton55_Callback(hObject, eventdata, handles)
+% hObject    handle to pushbutton55 (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+%% New Calculate Pool Dosage
+fprintf('Calculate New Pool Dose: ')
+warning('off', 'all')
+try
+    waitb = waitbar(0,'Plz wait :P ....');
+    tic %start timing
+    set(handles.pushbutton55,'Enable','off');
+    ct=evalin('base','ct');
+    pln=evalin('base','pln');
+    cst=evalin('base','cst');
+    B=evalin('base','B');
+    C=evalin('base','C');
+    x=evalin('base','x');
+    T=evalin('base','T');
+    temp2.gantryangles=pln.propStf.gantryAngles;
+    temp2.couchangles=pln.propStf.couchAngles;
+    temp2.numofbeams=pln.propStf.numOfBeams;
+    temp2.isocenter=pln.propStf.isoCenter;
+    pln.propStf.numOfBeams=1;
+    
+    y=0; %%%
+    yyy=1;
+    jjj=1;
+            
+    for j=1:temp2.numofbeams %going through each beam
+        pln.propStf.gantryAngles=temp2.gantryangles(jjj); %copy over all angles
+        pln.propStf.couchAngles=temp2.couchangles(jjj);
+        pln.propStf.isoCenter=temp2.isocenter(jjj,:);
+
+        stf = matRad_generateStf(ct,cst,pln);
+        if strcmp(pln.radiationMode,'photons')
+            dij = matRad_calcPhotonDoseX(ct,stf,pln,cst);
+            %dij = matRad_calcPhotonDoseVmc(ct,stf,pln,cst);
+        elseif strcmp(pln.radiationMode,'protons') || strcmp(pln.radiationMode,'carbon')
+            dij = matRad_calcParticleDose(ct,stf,pln,cst);
+        end
+        % % simplify dose matrix %%%%%% not simplify, just vector sum
+        %fprintf('calculating beam %d TARGET dosage and OAR dosage of %d beams\n',j+y+(size(T,1)-1)*(yyy-1),temp2.numofbeams);
+
+        %calculate dosages on target
+        for i=1:size(C.tg,2)
+            D.TARGETdose{i,jjj}=sum(dij.physicalDose{1}(C.tg{i},:),2);%/size(dij.physicalDose{1},2);
+            D.TARGETdosesum(i,jjj)=sum(D.TARGETdose{i,jjj});
+            D.TARGETnonzero(i,jjj)=size(find(D.TARGETdose{i,jjj}),1);
+            for iii=1:size(C.tgapi{i},1)
+                D.TARGETdoseap{i,jjj}(iii)=sum(D.TARGETdose{i,jjj}(C.tgaps{i}{iii}{2}));
+            end
+            D.TARGETdoseap{i,jjj}=D.TARGETdoseap{i,jjj}';
+        end
+
+        %calculate dosages on organ
+        for i=1:size(C.oar,2)
+            D.OARdose{i,jjj}=sum(dij.physicalDose{1}(C.oar{i},:),2);%/size(dij.physicalDose{1},2);
+            D.OARdosesum(i,jjj)=sum(D.OARdose{i,jjj});
+            D.OARnonzero(i,jjj)=size(find(D.OARdose{i,jjj}),1);
+            for iii=1:size(C.oarapi{i},1)
+                D.OARdoseap{i,jjj}(iii)=sum(D.OARdose{i,jjj}(C.oaraps{i}{iii}{2}));
+            end
+            D.OARdoseap{i,jjj}=D.OARdoseap{i,jjj}';
+        end
+
+        jjj=jjj+1;
+
+        %update waitbar
+        waitbar((j+y+(size(T,1)-1)*(yyy-1))/(size(C.tg,2)*x));
+        y=y+x;
+        yyy=yyy+1;
+    end
+    
+    t=1;
+    for k=C.tgindex
+        cst{k,6}=C.tgcst{t};
+        cst{k,4}{1}=C.tg{t};
+        t=t+1;
+    end
+    
+    pln.propStf.gantryAngles=temp2.gantryangles;
+    pln.propStf.couchAngles=temp2.couchangles;
+    pln.propStf.numOfBeams=temp2.numofbeams;
+    pln.propStf.isoCenter=temp2.isocenter;
+    %clear temp2;
+    assignin('base','D',D);
+    assignin('base','pln2',pln);
+    set(handles.pushbutton55,'Enable','on');
+    close(waitb);
+toc %end timing
+
+catch
+    close(waitb);
+    set(handles.pushbutton55,'Enable','on');
+    error('Maybe some variables missing');
+end
 
 
 % --- Executes on mouse press over figure background.
@@ -7048,4 +7264,3 @@ function figure1_ButtonDownFcn(hObject, eventdata, handles)
 % hObject    handle to figure1 (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
-
