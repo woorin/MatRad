@@ -7065,10 +7065,21 @@ function pushbutton54_Callback(hObject, eventdata, handles)
 fprintf('Creating New Beam Pool: ')
 
 try
-
+ 
+%call answer by answer{x}
 %start timing
-tic
 set(handles.pushbutton54,'Enable','off');
+
+prompt = {'New Beams Per Picked (even please):','Max Gantry Degree Difference:','Max Couch Degree Difference:'};
+dlg_title = 'Input';
+num_lines = 1;
+defaultans = {'2','10','10'};
+answer = inputdlg(prompt,dlg_title,num_lines,defaultans);
+nb = str2double(answer{1}); %number of new beams per each currently picked beam
+gd = str2double(answer{2}); %maximum gantry angle difference
+cd = str2double(answer{3}); %maximum couch angle difference
+
+tic
 waitb = waitbar(0,'Plz wait :P ....');
 ct=evalin('base','ct');
 pln=evalin('base','pln');
@@ -7076,34 +7087,112 @@ pln2=evalin('base','pln2');
 cst=evalin('base','cst');
 x=evalin('base','x');
 C=evalin('base','C');
+RCD=evalin('base','RCD');
 
 numNB=(size(C.tg,2)-1)*size(C.tg,2); %number of N beams in between targets
 startN = pln2.propStf.numOfBeams - numNB + 1; %number N beams start at
 
-fprintf('modify\n')
 %MODIFY
-pln.propStf.numOfBeams=2 + numNB; %picked beam + in between beams
+%FIX THIS FOR NUMBER OF BEAMS!!!
+%pln.propStf.numOfBeams=2 + numNB; %picked beam + in between beams
 pln.propStf.isoCenter=[];
 pln.propStf.gantryAngles=[];
 pln.propStf.couchAngles=[];
 
-fprintf('first beam\n')
-%first beam
-pln.propStf.isoCenter=[336, 330.0438, 200];
-pln.propStf.gantryAngles(1,1)=144;
-pln.propStf.couchAngles(1,1)=108;
+counter=1; %helper variable for the number of beams we've picked
+for x=1:size(RCD, 2) %go through each picked beam
+    %set current beam values
+    currBeam=RCD(x); %current beam number
+    currIso=pln2.propStf.isoCenter(currBeam,:);
+    currGa=pln2.propStf.gantryAngles(1,currBeam);
+    currCa=pln2.propStf.couchAngles(1,currBeam);
+    
+    %check if current beam is an NB or not
+    if currBeam<startN %only keep going if it's not an NB
+        %add current beam to beam pool
+        pln.propStf.isoCenter(counter,:)=currIso;
+        pln.propStf.gantryAngles(1,counter)=currGa;
+        pln.propStf.couchAngles(1,counter)=currCa;
+        counter=counter+1;
+        
+        intGa=gd/nb; %max gantry angle divided by # of new beams
+        intCa=cd/nb; %max couch angle divided by # of new beams
+        numInt=nb/2; %number of intervals per up/down direction
 
-fprintf('second beam\n')
-%second beam
-second = [312,312,240];
-pln.propStf.isoCenter= [pln.propStf.isoCenter;second];
-pln.propStf.gantryAngles(1,2)=36;
-pln.propStf.couchAngles(1,2)=120;
+        %helper counter variables, set to current angles
+        upGa=currGa;
+        downGa=currGa;
+        upCa=currCa;
+        downCa=currCa;
+        %loop to determine parameters for new beams
+        for j=1:numInt
+            newGa=0;
+            newCa=0;
+            
+            %down direction first
+            rawGaDown=downGa-intGa; %raw new gantry angle
+            if rawGaDown>=0
+                newGa=rawGaDown;
+            else %rawGaDown is a negative value
+                newGa=360+rawGaDown;
+            end
+            downGa=newGa;
+            %couch angle calculation
+            rawCaDown=downCa-intCa; %raw new couch angle
+            if rawCaDown>=0
+                newCa=rawCaDown;
+            else
+                newCa=360+rawCaDown;
+            end
+            downCa=newCa;
+            %add beam
+            pln.propStf.isoCenter(counter,:)=currIso;
+            pln.propStf.gantryAngles(1,counter)=newGa;
+            pln.propStf.couchAngles(1,counter)=newCa;
+            counter=counter+1;
+            
+            %going in the up direction
+            rawGaUp=upGa+intGa; %raw new gantry angle
+            if rawGaUp<=360
+                newGa=rawGaUp;
+            else %rawGaUp is over 360
+                newGa=rawGaUp-360;
+            end
+            upGa=newGa;
+            %couch angle calculation
+            rawCaUp=upCa+intCa; %raw new couch angle
+            if rawCaUp<=360
+                newCa=rawCaUp;
+            else
+                newCa=rawCaUp-360;
+            end
+            upCa=newCa;
+            %add beam
+            pln.propStf.isoCenter(counter,:)=currIso;
+            pln.propStf.gantryAngles(1,counter)=newGa;
+            pln.propStf.couchAngles(1,counter)=newCa;
+            counter=counter+1;
+            
+        end
+        
+    end
+end
+pln.propStf.numOfBeams=counter-1+numNB; %picked beam + in between beams
 
-fprintf('old beams\n')
+% %first beam
+% pln.propStf.isoCenter=[336, 330.0438, 200];
+% pln.propStf.gantryAngles(1,1)=144;
+% pln.propStf.couchAngles(1,1)=108;
+% 
+% %second beam
+% second = [312,312,240];
+% pln.propStf.isoCenter= [pln.propStf.isoCenter;second];
+% pln.propStf.gantryAngles(1,2)=36;
+% pln.propStf.couchAngles(1,2)=120;
+
 %always keep the beams in between the targets to the end
-count = 3;
-for b=startN:pln2.propStf.numOfBeams
+count = counter;
+for b=startN:pln2.propStf.numOfBeams %starting from beam we left off on
     pln.propStf.isoCenter(count,:) = pln2.propStf.isoCenter(b,:);
     pln.propStf.gantryAngles(1,count) = pln2.propStf.gantryAngles(1,b);
     pln.propStf.couchAngles(1,count)=pln2.propStf.couchAngles(1,b);
@@ -7144,7 +7233,6 @@ end
 % % pln modify done
 % %
 %handles.State = 2;
-fprintf('setting handles: %d', handles.State)
 newb = 1;
 
 assignin('base','pln',pln); %assign modified pln to pln for dosage calc
@@ -7209,10 +7297,10 @@ try
             D.TARGETdose{i,jjj}=sum(dij.physicalDose{1}(C.tg{i},:),2);%/size(dij.physicalDose{1},2);
             D.TARGETdosesum(i,jjj)=sum(D.TARGETdose{i,jjj});
             D.TARGETnonzero(i,jjj)=size(find(D.TARGETdose{i,jjj}),1);
-            for iii=1:size(C.tgapi{i},1)
-                D.TARGETdoseap{i,jjj}(iii)=sum(D.TARGETdose{i,jjj}(C.tgaps{i}{iii}{2}));
-            end
-            D.TARGETdoseap{i,jjj}=D.TARGETdoseap{i,jjj}';
+%             for iii=1:size(C.tgapi{i},1)
+%                 D.TARGETdoseap{i,jjj}(iii)=sum(D.TARGETdose{i,jjj}(C.tgaps{i}{iii}{2}));
+%             end
+%             D.TARGETdoseap{i,jjj}=D.TARGETdoseap{i,jjj}';
         end
 
         %calculate dosages on organ
@@ -7220,10 +7308,10 @@ try
             D.OARdose{i,jjj}=sum(dij.physicalDose{1}(C.oar{i},:),2);%/size(dij.physicalDose{1},2);
             D.OARdosesum(i,jjj)=sum(D.OARdose{i,jjj});
             D.OARnonzero(i,jjj)=size(find(D.OARdose{i,jjj}),1);
-            for iii=1:size(C.oarapi{i},1)
-                D.OARdoseap{i,jjj}(iii)=sum(D.OARdose{i,jjj}(C.oaraps{i}{iii}{2}));
-            end
-            D.OARdoseap{i,jjj}=D.OARdoseap{i,jjj}';
+%             for iii=1:size(C.oarapi{i},1)
+%                 D.OARdoseap{i,jjj}(iii)=sum(D.OARdose{i,jjj}(C.oaraps{i}{iii}{2}));
+%             end
+%             D.OARdoseap{i,jjj}=D.OARdoseap{i,jjj}';
         end
 
         jjj=jjj+1;
