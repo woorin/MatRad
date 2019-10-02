@@ -7099,10 +7099,11 @@ pln.propStf.isoCenter=[];
 pln.propStf.gantryAngles=[];
 pln.propStf.couchAngles=[];
 
+
 counter=1; %helper variable for the number of beams we've picked
-for x=1:size(RCD, 2) %go through each picked beam
+for x=1:pln2.propStf.numOfBeams %go through each beam in original beam pool
     %set current beam values
-    currBeam=RCD(x); %current beam number
+    currBeam=x; %current beam number
     currIso=pln2.propStf.isoCenter(currBeam,:);
     currGa=pln2.propStf.gantryAngles(1,currBeam);
     currCa=pln2.propStf.couchAngles(1,currBeam);
@@ -7115,69 +7116,150 @@ for x=1:size(RCD, 2) %go through each picked beam
         pln.propStf.couchAngles(1,counter)=currCa;
         counter=counter+1;
         
-        intGa=gd/nb; %max gantry angle divided by # of new beams
-        intCa=cd/nb; %max couch angle divided by # of new beams
-        numInt=nb/2; %number of intervals per up/down direction
+        if ismember(currBeam, RCD) %if it is a picked beam, create new beams
+            intGa=gd/nb; %max gantry angle divided by # of new beams
+            intCa=cd/nb; %max couch angle divided by # of new beams
+            numInt=nb/2; %number of intervals per up/down direction
 
-        %helper counter variables, set to current angles
-        upGa=currGa;
-        downGa=currGa;
-        upCa=currCa;
-        downCa=currCa;
-        %loop to determine parameters for new beams
-        for j=1:numInt
-            newGa=0;
-            newCa=0;
-            
-            %down direction first
-            rawGaDown=downGa-intGa; %raw new gantry angle
-            if rawGaDown>=0
-                newGa=rawGaDown;
-            else %rawGaDown is a negative value
-                newGa=360+rawGaDown;
+            %helper counter variables, set to current angles
+            upGa=currGa;
+            downGa=currGa;
+            upCa=currCa;
+            downCa=currCa;
+            %loop to determine parameters for new beams
+            for j=1:numInt
+                newGa=0;
+                newCa=0;
+
+                %down direction first
+                rawGaDown=downGa-intGa; %raw new gantry angle
+                if rawGaDown>=0
+                    newGa=rawGaDown;
+                else %rawGaDown is a negative value
+                    newGa=360+rawGaDown;
+                end
+                downGa=newGa;
+                %couch angle calculation
+                rawCaDown=downCa-intCa; %raw new couch angle
+                if rawCaDown>=0
+                    newCa=rawCaDown;
+                else
+                    newCa=360+rawCaDown;
+                end
+                downCa=newCa;
+                %add beam
+                pln.propStf.isoCenter(counter,:)=currIso;
+                pln.propStf.gantryAngles(1,counter)=newGa;
+                pln.propStf.couchAngles(1,counter)=newCa;
+                counter=counter+1;
+
+                %going in the up direction
+                rawGaUp=upGa+intGa; %raw new gantry angle
+                if rawGaUp<=360
+                    newGa=rawGaUp;
+                else %rawGaUp is over 360
+                    newGa=rawGaUp-360;
+                end
+                upGa=newGa;
+                %couch angle calculation
+                rawCaUp=upCa+intCa; %raw new couch angle
+                if rawCaUp<=360
+                    newCa=rawCaUp;
+                else
+                    newCa=rawCaUp-360;
+                end
+                upCa=newCa;
+                %add beam
+                pln.propStf.isoCenter(counter,:)=currIso;
+                pln.propStf.gantryAngles(1,counter)=newGa;
+                pln.propStf.couchAngles(1,counter)=newCa;
+                counter=counter+1;   
             end
-            downGa=newGa;
-            %couch angle calculation
-            rawCaDown=downCa-intCa; %raw new couch angle
-            if rawCaDown>=0
-                newCa=rawCaDown;
-            else
-                newCa=360+rawCaDown;
-            end
-            downCa=newCa;
-            %add beam
-            pln.propStf.isoCenter(counter,:)=currIso;
-            pln.propStf.gantryAngles(1,counter)=newGa;
-            pln.propStf.couchAngles(1,counter)=newCa;
-            counter=counter+1;
-            
-            %going in the up direction
-            rawGaUp=upGa+intGa; %raw new gantry angle
-            if rawGaUp<=360
-                newGa=rawGaUp;
-            else %rawGaUp is over 360
-                newGa=rawGaUp-360;
-            end
-            upGa=newGa;
-            %couch angle calculation
-            rawCaUp=upCa+intCa; %raw new couch angle
-            if rawCaUp<=360
-                newCa=rawCaUp;
-            else
-                newCa=rawCaUp-360;
-            end
-            upCa=newCa;
-            %add beam
-            pln.propStf.isoCenter(counter,:)=currIso;
-            pln.propStf.gantryAngles(1,counter)=newGa;
-            pln.propStf.couchAngles(1,counter)=newCa;
-            counter=counter+1;
-            
-        end
-        
+        end 
     end
 end
 pln.propStf.numOfBeams=counter-1+numNB; %picked beam + in between beams
+
+
+% counter=1; %helper variable for the number of beams we've picked
+% for x=1:size(RCD, 2) %go through each picked beam
+%     %set current beam values
+%     currBeam=RCD(x); %current beam number
+%     currIso=pln2.propStf.isoCenter(currBeam,:);
+%     currGa=pln2.propStf.gantryAngles(1,currBeam);
+%     currCa=pln2.propStf.couchAngles(1,currBeam);
+%     
+%     %check if current beam is an NB or not
+%     if currBeam<startN %only keep going if it's not an NB
+%         %add current beam to beam pool
+%         pln.propStf.isoCenter(counter,:)=currIso;
+%         pln.propStf.gantryAngles(1,counter)=currGa;
+%         pln.propStf.couchAngles(1,counter)=currCa;
+%         counter=counter+1;
+%         
+%         intGa=gd/nb; %max gantry angle divided by # of new beams
+%         intCa=cd/nb; %max couch angle divided by # of new beams
+%         numInt=nb/2; %number of intervals per up/down direction
+% 
+%         %helper counter variables, set to current angles
+%         upGa=currGa;
+%         downGa=currGa;
+%         upCa=currCa;
+%         downCa=currCa;
+%         %loop to determine parameters for new beams
+%         for j=1:numInt
+%             newGa=0;
+%             newCa=0;
+%             
+%             %down direction first
+%             rawGaDown=downGa-intGa; %raw new gantry angle
+%             if rawGaDown>=0
+%                 newGa=rawGaDown;
+%             else %rawGaDown is a negative value
+%                 newGa=360+rawGaDown;
+%             end
+%             downGa=newGa;
+%             %couch angle calculation
+%             rawCaDown=downCa-intCa; %raw new couch angle
+%             if rawCaDown>=0
+%                 newCa=rawCaDown;
+%             else
+%                 newCa=360+rawCaDown;
+%             end
+%             downCa=newCa;
+%             %add beam
+%             pln.propStf.isoCenter(counter,:)=currIso;
+%             pln.propStf.gantryAngles(1,counter)=newGa;
+%             pln.propStf.couchAngles(1,counter)=newCa;
+%             counter=counter+1;
+%             
+%             %going in the up direction
+%             rawGaUp=upGa+intGa; %raw new gantry angle
+%             if rawGaUp<=360
+%                 newGa=rawGaUp;
+%             else %rawGaUp is over 360
+%                 newGa=rawGaUp-360;
+%             end
+%             upGa=newGa;
+%             %couch angle calculation
+%             rawCaUp=upCa+intCa; %raw new couch angle
+%             if rawCaUp<=360
+%                 newCa=rawCaUp;
+%             else
+%                 newCa=rawCaUp-360;
+%             end
+%             upCa=newCa;
+%             %add beam
+%             pln.propStf.isoCenter(counter,:)=currIso;
+%             pln.propStf.gantryAngles(1,counter)=newGa;
+%             pln.propStf.couchAngles(1,counter)=newCa;
+%             counter=counter+1;
+%             
+%         end
+%         
+%     end
+% end
+% pln.propStf.numOfBeams=counter-1+numNB; %picked beam + in between beams
 
 % %first beam
 % pln.propStf.isoCenter=[336, 330.0438, 200];
